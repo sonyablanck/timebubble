@@ -4,6 +4,8 @@ Implements DESIGN.md §2 and §7. TypeScript, runs in a Web Worker.
 
 Conventions as in `pipeline/PSEUDOCODE.md`: `# INVARIANT:` lines become tests, `# CHECK:` lines are facts to verify first.
 
+> **Status: coded** (`src/terrain/`, see its README) and tested on the real 150 Ma DEM, including the §9 invariants. Amended while coding (details under *Amendments from coding* at the end): Catmull-Rom instead of a B-spline for the base; an exact per-cell bump instead of the iterated correction; zero-mean ridged noise; whole-tile resolution steps instead of 64 render chunks; a fixed tile grid with an integer number of columns per row. The §3 `# CHECK:` (registration) is resolved: the 2024 DEMs are node-registered, so each value is the height at its node.
+
 ---
 
 ## Core idea
@@ -268,3 +270,14 @@ Skirts hide cracks both between LOD levels and between N/S neighbour tiles, whos
 ## Amendment to DESIGN.md
 
 - **A9 (Determinism):** the noise seed is **global per slice** (`hash(sliceAge)`), not per tile. Per-tile seeds would make neighbouring tiles disagree at their edges. Tile identity comes from the fixed tile grid (§1). Vegetation and fauna scatter use world-anchored seeds for the same reason (ecology §4).
+
+---
+
+## Amendments from coding (2026-10-31)
+
+- **§3 base:** Catmull-Rom (passes through the nodes, analytic gradient for slope) instead of a cubic B-spline. Overshoot is harmless because §5 fixes each cell's mean exactly.
+- **§5 correction:** the iterated correction converged poorly where detail varies within a cell. Replaced by an exact local scheme: `H = S + D + r_c·ψ_c`, with `ψ(s, t) = 900·(s(1−s))²·(t(1−t))²` over the cell (mean 1; zero value and slope on the edges) and `r_c = source − mean(S + D)` from 64 × 64 samples. Each cell's mean is exact by construction, the correction is C¹ across cell edges, and cells are independent (memoised per cell). The detail-free surface uses the same bump: `Hsmooth = S + r'_c·ψ_c`, `r'_c = source − mean(S)`.
+- **§4b noise:** fBm and ridged sums are both **zero-mean**. A biased detail (the raw ridged sum averages +0.6) forces `r_c` to remove it through ψ, stamping the 0.1° cell pattern into the relief. Test added.
+- **§1 tile grid:** rows are 4 km of latitude; each row has `round(360·cos(lat)/Δ)` columns of equal width, so it closes exactly at ±180°. Vertex coordinates are computed as `−180 + (col + j/512)·dlon`, so shared E/W edges are bitwise identical. Walking is limited to |lat| ≤ 89.5°.
+- **§8 LOD:** whole tiles at a vertex step (1 for the tile underfoot, 4 for the ring), with skirts, instead of 64 chunks per tile. Simpler, and fast enough (the full ring is ~0.8 M triangles in 8 draw calls). Chunked LOD can return with plants, if needed.
+- **§7 worker:** requests run strictly one at a time (a Surface holds one prepared DEM window); tiles, the far ring and inspect queries share the queue.

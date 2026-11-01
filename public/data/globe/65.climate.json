@@ -1,0 +1,33 @@
+{
+ "age": 65,
+ "precip": {
+  "age_mismatch_myr": 0.0,
+  "area_mean": 3.457,
+  "max": 13.878,
+  "min": 0.08,
+  "nodata_filled": 0,
+  "override_reason": null,
+  "pole_cells_flattened": 720,
+  "provenance": "inferred",
+  "scale": 100,
+  "source": "Mean annual precipitation, HadCM3L scotese_02 (Valdes et al. 2021)",
+  "source_age": 65.0,
+  "source_file": "065Ma_precip.nc",
+  "units": "0.01 mm/day"
+ },
+ "temp": {
+  "age_mismatch_myr": -5.0,
+  "area_mean": 22.159,
+  "max": 35.18,
+  "min": -3.937,
+  "nodata_filled": 0,
+  "override_reason": "The 65 Ma grid is an icehouse outlier (area mean 8.1 °C, −9 °C at 60°N) between warm 70 Ma (20.8 °C) and 60 Ma grids, although the dataset's own documentation lists 65–40 Ma as a hothouse interval; it appears to encode a K–Pg cooling event. Time Bubble models impact winter separately (Aftermath mode, DESIGN §8), so the base 65 Ma slice uses the 60 Ma (Palaeocene) grid instead.",
+  "pole_cells_flattened": 2,
+  "provenance": "inferred",
+  "scale": 100,
+  "source": "Mean annual surface temperature, scotese02a_v21321 (Scotese 2022; Scotese et al. 2021)",
+  "source_age": 60.0,
+  "source_file": "060_temp_list.csv",
+  "units": "0.01 degC"
+ }
+}

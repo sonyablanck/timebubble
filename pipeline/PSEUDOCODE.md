@@ -7,6 +7,8 @@ Conventions:
 - `# CHECK:` lines are facts to verify against the real files or API before coding that step.
 - All coordinates are (lat, lon) in degrees, lon in [-180, 180).
 
+
+> **Status (2026-11-01):** steps 0–5 and the manifest half of 6 are coded, tested and run on the real data (PBDB download of 2026-11-01: 608,780 rows → 516,075 clean; every one fell inside a plate polygon). Real-data findings: PBDB writes `NO_ORDER_SPECIFIED`-style placeholders (read as empty); many dinosaurs are filed as class Reptilia with no order, so dinosaur detection uses every dinosaur family in `rules.csv` plus egg and track families; microfossils and algae get body plan `skip` (counted, not reviewed); 5.4% of occurrence-slices remain unmapped (no taxonomy, dinosaurs without a family, tracks, lycopsids, gnetophytes, liverworts: see `pipeline/review/unmapped_taxa.csv`). Ecology files are gzipped JSON (`ecology/{age}.json.gz`, 11 MB in all, from 204 MB plain). Terrestrial-environment fossils land on 1° DEM land 67–99% of the time, and on land or shelf above −200 m 88–99.7% (`pipeline/checks/fossil_land_check.py`), confirming the plate model choice (DESIGN A12). Settled while coding: the PBDB query uses `min_ma=62.5&max_ma=252.5&timerule=overlap&show=class,coords,env&vocab=pbdb&limit=all&datainfo` (parameter names confirmed against published PBDB download metadata); the `datainfo` header is parsed for the access time and licence. Intermediates are gzipped CSV/JSON rather than parquet (no extra dependency). PBDB's own download metadata has stated **CC0** since at least November 2025 (earlier CC BY 4.0); the pipeline records whatever the actual download says. Non-avian dinosaurs are recognised by Saurischia/Ornithischia and their subgroups at class, order or family level, birds (Aves) kept. `rules.csv` is a starter set; size hints stay blank until sourced.
 ---
 
 ## 0. config.py
@@ -30,8 +32,9 @@ BIN_DEG      = 5                      # occurrence bins
 HEIGHT_DTYPE = int16, metres, little-endian
 HEIGHT_EXT   = ".i16.gz"              # gzip with mtime=0 for byte-identical output
 
-PALEOMAP_ROT   = DATA_RAW + "PALEOMAP_PlateModel.rot"
-PALEOMAP_POLYS = DATA_RAW + "PALEOMAP_PlatePolygons.gpml"
+DEM source     = PALEOMAP PaleoDEMs, 2024 release (Zenodo 10659112, item 5a), 0.1° netCDF
+PLATE_MODEL    = PALEOMAP v19o_r1d, same record (item 3a): Scotese_Plate_Model_forPgeog_v19o_r1d_v240506a.rot
+                 + Scotese_Plate_Polygons__forPgeog_v19o_v240506.gpml (confirmed, DESIGN A12)
 
 slices() -> list of ages from SLICE_MAX_MA down to SLICE_MIN_MA in steps of SLICE_STEP
 ```
@@ -42,30 +45,34 @@ slices() -> list of ages from SLICE_MAX_MA down to SLICE_MIN_MA in steps of SLIC
 
 ```
 for age in slices():
-    # CHECK: PaleoDEM filenames encode age; parse age from name, never hard-code names
-    src_1deg  = find_dem_file(resolution=1.0, age=age)
+    # 2024 names are '{age:03d}_v{version}.nc' (e.g. 150_v23220d.nc); parse, never hard-code
     src_01deg = find_dem_file(resolution=0.1, age=age)
+    src_1deg  = find_dem_file(resolution=1.0, age=age) or None   # only the 2018 release has one
 
     # CHECK: grid registration (cell-centred vs node). Affects interpolation and
     #        mean preservation; record it in the sidecar.
-    grid_1   = read_raster(src_1deg)      -> array[lat, lon] of float metres
-    grid_01  = read_raster(src_01deg)
+    grid_01  = read_raster(src_01deg)     -> array[lat, lon] of float metres
+    grid_1   = read_raster(src_1deg) if src_1deg
+               else area_mean(grid_01, factor 10)   # trapezoid weights on node grids
 
-    normalise_orientation(grid)           # north at row 0, lon from -180
+    normalise_orientation(grid)           # north at row 0, lon from -180; the ±180°
+                                          # columns differ in the 2024 files (two estimates
+                                          # of one meridian): keep −180, record max diff
     fill_nodata(grid)                     # nearest-neighbour; log count
 
     # --- Globe ---
     write_int16(DATA_OUT/globe/{age}.i16.gz, round(grid_1))
     write_json (DATA_OUT/globe/{age}.json, {
         age, width, height, res: 1.0, registration,
-        min_elev, max_elev, source: "PaleoDEM 1deg v2", provenance: "data" })
+        min_elev, max_elev, source, resampling, provenance: "data" })
 
     # --- Terrain chunks ---
-    for chunk_lat in range(-90, 90, CHUNK_DEG):
-        for chunk_lon in range(-180, 180, CHUNK_DEG):
-            block = slice_with_overlap(grid_01, chunk_lat, chunk_lon,
-                                       CHUNK_DEG, CHUNK_OVERLAP)  # wraps at lon ±180
-            write_int16(DATA_OUT/terrain/{age}/{chunk_lat}_{chunk_lon}.i16.gz, round(block))
+    # chunk (R, C) = global rows R*100 .. R*100+100, cols C*100 .. C*100+100
+    # (row 0 = north), matching data/ §3's chunkKeyFor(latIdx, lonIdx)
+    for R in 0 .. ceil(NLAT / 100) − 1:              # 19 rows for 1801 node rows
+        for C in 0 .. NLON / 100 − 1:                # 36 columns
+            block = 101×101 window, cols wrap at lon ±180, rows clamp at the south pole
+            write_int16(DATA_OUT/terrain/{age}/r{R}_c{C}.i16.gz, round(block))
 
     write_json(DATA_OUT/terrain/{age}/index.json, chunk list + dims + registration)
 
@@ -95,30 +102,45 @@ for age in slices():
 # INVARIANT: value continuous across the antimeridian
 ```
 
-## 1c. ingest_temperature.py (needed by biome/)
+## 1c. ingest_climate.py (needed by biome/) — coded
 
-Source: Scotese, *Global Mean Surface Temperatures for 100 Phanerozoic Time Intervals*, Zenodo, CC BY 4.0 (DOI 10.5281/zenodo.5718392; latest version 10.5281/zenodo.8238875). These are 1° netCDF grids (361×181) for 100 stage-level intervals, from HadCM3L runs (Valdes, Scotese and Lunt, 2021) adjusted to δ18O proxies and lithological indicators (Scotese et al., 2021).
+Sources, both in the 2024 PALEOMAP record (Zenodo 10659112), 1°, 361×181, node-registered:
+- **Temperature** (item 6a1, list-format CSV): mean annual surface temperature, version scotese02a_v21321, identical to Scotese (2022). HadCM3L runs (Valdes, Scotese and Lunt, 2021) adjusted to δ18O proxies and lithological indicators (Scotese et al., 2021).
+- **Precipitation** (item 6b2, netCDF): mean annual precipitation, version scotese_02. Raw HadCM3L output (Valdes, Scotese and Lunt, 2021), not proxy-adjusted. Units are **mm/day**, although the record's explanation says mm/month: area means are 3.2–4.1, against ≈ 2.7 mm/day for Earth today.
 
 ```
-# CHECK: read readme.md: variable name, units, exact interval ages, grid registration
-# CHECK: confirm the HadCM3L runs use the PALEOMAP palaeogeography (Valdes et al. 2021);
-#        if so, model coastlines line up with our DEMs
-intervals = list netCDF files with their representative ages (Ma)
+for var in (temp, precip):
+    intervals = files in raw/{var}/ with ages parsed from their names
+    for age in slices():
+        src = CLIMATE_OVERRIDES[(var, age)] if present          # documented substitution
+              else interval with age nearest to `age`           # ties -> older interval
+              # nearest, not interpolated: blending two plate configurations
+              # smears climate across shifting coastlines
+        G = load_global_grid(src)    # CSV list or netCDF; drops the duplicate lon 180
+                                     # column and NaN padding past 180°E; snaps float32
+                                     # coordinates; same layout as the 1° DEM
+        flatten_pole_rows(G)         # each pole is one point: set the row to its median
+                                     # (removes the 50 °C / −55 °C legend anchors at 90°N)
+        reject if any cell falls outside plausible bounds
+        reject if the area-weighted mean falls outside its range (temp 5–40 °C,
+               precip 1–6 mm/day): catches K vs °C and mm/month vs mm/day
+        reject if G's shape or registration differs from globe/{age}.json
+        write_int16(globe/{age}.{var}.i16.gz, round(G * scale))   # temp ×100 (0.01 °C),
+                                                                   # precip ×100 (0.01 mm/day)
+    write_json(globe/{age}.climate.json, per var: source, file, source_age,
+               age_mismatch_myr, override_reason, units, min, max, area-weighted mean,
+               pole_cells_flattened)
 
-for age in slices():
-    src = interval with representative age nearest to `age`
-          # nearest, not interpolated: blending two plate configurations
-          # smears temperatures across shifting coastlines
-    T = read(src)                                   # 361×181, lon −180..180 inclusive
-    T = drop duplicate lon 180 column -> 360×181    # CHECK: identical to lon −180
-    T = normalise_orientation(T)                    # same layout as the 1° DEM
-    write_int16(DATA_OUT/globe/{age}.temp.i16.gz, round(T * 100))   # 0.01 °C units
-    sidecar += { temp_source_interval, temp_source_age, age_mismatch_myr }
+# OVERRIDE (only one): temp at 65 Ma uses the 60 Ma grid. The 65 Ma grid has an area
+#   mean of 8.1 °C (−9 °C at 60°N) between ~21–22 °C neighbours, although the dataset's
+#   documentation calls 65–40 Ma a hothouse; Aftermath mode models K–Pg cooling itself.
 
-# INVARIANT: every slice has a temperature grid; |age_mismatch_myr| logged per slice
+# INVARIANT: every slice has both grids, aligned with the heightmap
 # WARN if |age_mismatch_myr| > 3 (info card shows the mismatch)
-# SANITY: grid-wide area-weighted mean reported per slice next to Scotese et al.
-#         (2021) published global averages; flag differences > 2 °C for review
+# SANITY: area-weighted mean temperature per slice next to Scotese et al. (2021)
+#         published global averages; flag differences > 2 °C for review
+# CHECK: land/sea disagreement between the climate model's palaeogeography and the
+#        2024 DEMs, per slice (the model ran on the Valdes et al. 2021 geography)
 ```
 
 ## 1d. climate_by_age.json (hand-curated, copied as-is)
@@ -126,9 +148,8 @@ for age in slices():
 ```
 per slice: {
     age,
-    zonal_moisture: [ { lat, value } control points ],   # 0..1
-    dry_belt_lat,                     # Triassic ≈ 35 (Chandra et al. 2021); CHECK others
-    megamonsoon_strength,             # 0..1; high Triassic → Early Jurassic (Parrish 1993)
+    # (zonal moisture, dry-belt latitude and megamonsoon strength were dropped:
+    #  moisture now comes from the precipitation grids, §1c)
     ice_possible,                     # true only 165 Ma and 130–150 Ma (Scotese et al. 2021)
     gmst_scotese, gmst_judd,          # global means for the uncertainty note
                                       # (Scotese et al. 2021; Judd et al. 2024)
@@ -182,8 +203,8 @@ log counts dropped at each step
 ## 3. rotate.py (pyGPlates + PALEOMAP)
 
 ```
-rotation_model  = load_rotation_model(PALEOMAP_ROT)
-static_polygons = load_features(PALEOMAP_POLYS)
+rotation_model  = load_rotation_model(PLATE_MODEL .rot file)
+static_polygons = load_features(PLATE_MODEL static/partitioning polygons)
 
 occ = load(DATA_RAW/pbdb_clean.parquet)
 
@@ -223,6 +244,10 @@ for age in slices():
 # INVARIANT: every palaeo_lat in [-90, 90], palaeo_lon in [-180, 180)
 # INVARIANT (sanity): a sample of rotated points falls on land or shelf in that
 #   slice's 1° DEM at a rate well above chance; report the rate and do not fail on it
+
+# REPORT: share of terrestrial occurrences (envClass TERRESTRIAL) landing on DEM land
+#   per slice. The plate model is already settled (DESIGN A12); this confirms it with
+#   fossils, since the DEM coastlines were fitted to PBDB localities (Kocsis and Scotese 2021).
 ```
 
 ---
@@ -272,13 +297,14 @@ for age in slices():
     occ = load(DATA_RAW/classified/{age}.parquet)
     bins = {}
     for o in occ:
-        key = bin_key(o.palaeo_lat, o.palaeo_lon, BIN_DEG)    # e.g. "35_-5"
+        key = bin_key(o.palaeo_lat, o.palaeo_lon, BIN_DEG)    # e.g. "35_-5": south-west
+                                                               # corner; must match data/'s binKey()
         bins[key].append({
             id: o.occurrence_no, name: o.accepted_name, rank: o.accepted_rank,
             body_plan, size_hint, matched_level,
             lat: o.palaeo_lat, lon: o.palaeo_lon,
             env: o.environment, age_range: [o.min_ma, o.max_ma], age_fit,
-            ref: o.reference_no })
+            ref: o.reference_no, straddles_kpg })
     write_json(DATA_OUT/ecology/{age}.json, bins)
 
 # INVARIANT: every occurrence appears in exactly one bin
@@ -286,32 +312,39 @@ for age in slices():
 
 ---
 
-## 6. build_manifest.py
+## 6. build_manifest.py — manifest coded; CREDITS still to do
 
 ```
 manifest = {
-    pipeline_version, plate_model: "PALEOMAP (Scotese 2016)",
-    inputs_hash,          # hash of raw inputs + rules.csv; NOT a timestamp,
-                          # which would break byte-identical output
+    schema: 1, pipeline_version, plate_model: "PALEOMAP v19o_r1d (Scotese et al. 2024)",
+    dem_source, kpg_ma,
+    data_version,         # hash of every asset file's bytes; NOT a timestamp, which
+                          # would break byte-identical output. Used by the app for ?v=
+    climate_params?, credits?,   # paths, once those files exist
     slices: [ for age in slices(): {
         age,
-        label: "after the extinction" if age < KPG_MA else period_name(age),
+        label: "150 Ma · Late Jurassic" / "65 Ma · Palaeocene · after the extinction",
+        period, epoch,        # ICS chart v2024/12; Cretaceous base 143.1 Ma
         aftermath_mode: age < KPG_MA,
+        grid, terrain_grid,   # dimensions, so the app decodes without fetching sidecars
         globe:   "globe/{age}.i16.gz",
+        globe_meta: "globe/{age}.json",
         continentality: "globe/{age}.continentality.i16.gz",
         temperature:    "globe/{age}.temp.i16.gz",
+        precipitation:  "globe/{age}.precip.i16.gz",
+        climate_meta:   "globe/{age}.climate.json",
         terrain: "terrain/{age}/index.json",
-        ecology: "ecology/{age}.json",
-        counts:  { occurrences, taxa, bins } } ]
+        ecology: "ecology/{age}.json" or null until steps 2–5 exist,
+        counts:  { occurrences, taxa, bins } } ]     # with the fossil steps
 }
 write_json(DATA_OUT/manifest.json, manifest)
 
 write CREDITS.md data section:
-    for each dataset (PaleoDEMs, PALEOMAP plate model, temperature grids, PBDB):
+    for each dataset (PaleoDEMs 2024, PALEOMAP plate model, temperature and precipitation grids, PBDB):
         name, version, DOI, licence, changes made
     PBDB retrieval date and query
-    papers each dataset asks us to cite (temperature grids: Scotese et al. 2021;
-        Valdes, Scotese and Lunt 2021)
+    papers each dataset asks us to cite (DEMs: Scotese et al. 2024, Kocsis and Scotese 2021;
+        climate grids: Scotese et al. 2021, Valdes, Scotese and Lunt 2021)
     every ref key used in climate_by_age.json, resolved from REFERENCES.md
     # INVARIANT: every ref key in climate_by_age.json exists in REFERENCES.md
 write public/data/credits.json (same content, for the in-app About panel)
@@ -324,7 +357,7 @@ copy hand-curated facts.json ("Did you know?" cards, ui/ §1c) to public/data
 ## run_all.py
 
 ```
-run ingest_dem -> continentality -> ingest_temperature -> copy climate_by_age -> ingest_pbdb -> rotate -> classify_taxa -> bin_occurrences -> build_manifest
+run ingest_dem -> continentality -> ingest_climate -> copy climate_by_age -> ingest_pbdb -> rotate -> classify_taxa -> bin_occurrences -> build_manifest
 stop on first failed INVARIANT; print a summary table of counts per slice
 
 # INVARIANT: two runs on unchanged inputs produce byte-identical /public/data

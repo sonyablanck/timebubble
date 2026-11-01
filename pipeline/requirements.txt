@@ -1,0 +1,6 @@
+numpy>=1.26
+scipy>=1.11
+xarray>=2024.1
+netCDF4>=1.6
+pytest>=8
+pygplates>=1.0     # fossil rotation (step 3) only; GPL-2.0-only, never shipped with the app

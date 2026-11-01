@@ -4,6 +4,8 @@ The entry point: a 3D globe of the chosen slice, a time slider, map layers, and 
 
 Conventions as in `pipeline/PSEUDOCODE.md`: `# INVARIANT:` lines become tests, `# CHECK:` lines are facts to verify first.
 
+> **Status: coded** (`src/globe/`, see its README), and checked in a browser against the real data. Settled while coding: the two `# CHECK:` items are resolved (registration is handled by placing each value at its texel centre; `sphereUV` and picking share `geo.ts`: lon 0 at +z, lon 90 at +x); temperature and precipitation share one overlay slot; the sea writes depth so grid lines behind it stay hidden; grid lines also mark the modern tropics; the hover readout adds precipitation. Period boundaries use the ICS chart v2024/12 (Cretaceous base 143.1 Ma).
+
 ---
 
 ## 0. Interface
@@ -20,13 +22,15 @@ interface Globe {
   flyTo(lat: number, lon: number): Promise<void>
 }
 
-type GlobeLayer = "relief" | "temperature" | "fossils" | "graticule" | "provenance"
+type GlobeLayer = "relief" | "temperature" | "precipitation" | "fossils" | "graticule" | "provenance"
+// temperature and precipitation are mutually exclusive (one 50% blend slot)
 
 interface HoverInfo {
   lat: number; lon: number                       // palaeo-coordinates
   elevationM: number                             // 1° DEM value (data)
   isLand: boolean
   temperatureC: number                           // 1° grid (inferred)
+  precipitationMmYr: number                      // 1° grid (mm/day) × 365.25 (inferred, model)
   coastDistKm: number                            // continentality grid
   occurrencesInBin: number; topTaxa: string[]    // ecology index
 }
@@ -40,12 +44,14 @@ interface HoverInfo {
 onSliceLoaded(handle):
     elev = await handle.globe()           # Int16Array 360×181, metres
     temp = await handle.temperature()     # Int16Array 360×181, 0.01 °C
+    prec = await handle.precipitation()   # Int16Array 360×181, 0.01 mm/day
     eco  = await handle.ecology()         # binned occurrences
 
     elevTex = DataTexture(Float16 R, 360×181, from elev)
               # half-float: linear filtering is guaranteed in WebGL2;
               # precision ≈ 8 m at 10 km depth, ample for a globe
     tempTex = DataTexture(Float16 R, 360×181, from temp / 100)
+    precTex = DataTexture(Float16 R, 360×181, from prec / 100 * 365.25)   # mm/year
     wrapS = Repeat (lon wraps), wrapT = Clamp (poles)
 
     # CHECK: grid registration from the sidecar; if cell-registered, offset UVs by
@@ -91,9 +97,10 @@ fragment shader:
 |---|---|---|---|---|
 | relief | on | 1° PaleoDEM | data | §2 |
 | temperature | off | 1° temperature grid | inferred | diverging palette (blue → white → red), 50% blend over relief; legend in °C with source, interval age and mismatch |
+| precipitation | off | 1° precipitation grid | inferred | sequential palette (pale → blue-green), 50% blend over relief; legend in mm/year with source, interval age and mismatch |
 | fossils | on | ecology index | data | one dot per 5° bin with occurrences, area ∝ √count, colour by dominant group (dinosaurs, marine reptiles, plants, other) |
 | graticule | on | — | — | 15° lines, palaeo-latitude labels; the equator and tropics emphasised |
-| provenance | off | provenance/ | — | relief = data, temperature = inferred, with the provenance palette; mostly for the legend and consistency |
+| provenance | off | provenance/ | — | relief = data, temperature and precipitation = inferred, with the provenance palette; mostly for the legend and consistency |
 
 The **fossils** layer doubles as a guide to where walking will be richest: tiles near dots get `data` fauna, while empty regions fall back to inferred taxa.
 
@@ -135,7 +142,7 @@ pointerMove / click:
 # INVARIANT: picks either side of lon ±180 resolve to the correct side
 ```
 
-`HoverInfo` drives a small readout in the corner (ui/ renders it): coordinates, elevation, land/sea, temperature "(model)", distance to coast and fossil count.
+`HoverInfo` drives a small readout in the corner (ui/ renders it): coordinates, elevation, land/sea, temperature and precipitation "(model)", distance to coast and fossil count.
 
 ---
 

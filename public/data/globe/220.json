@@ -1,0 +1,18 @@
+{
+ "age": 220,
+ "dtype": "int16le",
+ "height": 181,
+ "lat_north": 90.0,
+ "lon_west": -180.0,
+ "max_elev": 2746,
+ "min_elev": -3515,
+ "nodata_filled": 0,
+ "provenance": "data",
+ "registration": "node",
+ "res": 1.0,
+ "resampling": "area mean of the 0.1° grid (node registration)",
+ "source": "PALEOMAP PaleoDEMs (Scotese et al. 2024, v24221)",
+ "source_file": "220_v23229d.nc",
+ "units": "m",
+ "width": 360
+}

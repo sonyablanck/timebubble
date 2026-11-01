@@ -4,6 +4,8 @@ Implements DESIGN.md §8 (biome half). Runs in the terrain worker, straight afte
 
 Conventions as in `pipeline/PSEUDOCODE.md`: `# INVARIANT:` lines become tests, `# CHECK:` lines are facts to verify first. Every numeric threshold here is a starting value to tune.
 
+> **Status: coded** (`src/biome/`, see its README) and checked on the real data, including Aftermath mode (Impact Winter with a year slider, and Fern Spike, chosen on the globe's 65 Ma slice). Not yet: the §5 data path (plant occurrences arrive with pipeline steps 2–5, so the mix is the labelled prior), the §2a Judd et al. (2024) ΔGMST line (needs `climate_by_age.json`), and the §9 snapshot tiles (need rotated fossil localities). Amendments from coding are at the end.
+
 ---
 
 ## 0. Interfaces
@@ -11,7 +13,7 @@ Conventions as in `pipeline/PSEUDOCODE.md`: `# INVARIANT:` lines become tests, `
 ```ts
 interface BiomeInput {
   tile: Tile                         // from terrain/
-  slice: SliceHandle                 // age, aftermathMode, continentality, ecology
+  slice: SliceHandle                 // age, aftermathMode, temperature, precipitation, ecology
 }
 
 interface BiomeField {
@@ -97,43 +99,35 @@ The emergent "equatorial dead zone" in the 250 Ma slice is then grounded in lite
 
 ## 3. Moisture
 
-Moisture combines three ingredients, each tile-independent so tiles match at seams:
+Moisture comes from the **precipitation grids** (pipeline §1c): mean annual total precipitation from the HadCM3L runs of Valdes, Scotese and Lunt (2021). It is turned into an aridity ratio with the Köppen–Geiger dryness threshold (Peel, Finlayson and McMahon, 2007), which also uses temperature, so a hot place needs more rain to count as wet.
 
 ```
-# (a) Zonal belts (Hadley circulation)
-zonal(lat) =
-    high   near equator
-    low    in the subtropical dry belts, centred on dry_belt_lat(age)
-    moderate–high at mid latitudes
-    medium at high latitudes
-    # smooth curve from control points in climate_by_age.json
-    # Triassic: rainfall lows near 35° N/S with an equatorial high and moderate
-    #   mid-latitude highs (Chandra et al., 2021). Jurassic: dry Gondwanan
-    #   interior with wetter margins (same source).
-    # CHECK: dry_belt_lat for Jurassic and Cretaceous slices; start at 30°
+P_day    = bilinear(slice.precipitation(), lat, lon)       # mm/day, 1° grid
+MAP      = 365.25 * P_day                                   # mm/year
+P_thresh = 20 * max(temperatureC, 0) + 140                  # mm/year; Köppen B threshold
+                                                            # with no seasonal bias
+                                                            # (Peel et al. 2007: MAP < 10 × Pthreshold,
+                                                            #  Pthreshold = 2 × MAT + 14)
+aridity  = MAP / P_thresh          # < 0.5 desert (BW), 0.5–1 steppe (BS), > 1 humid
+base     = aridity / (1 + aridity) # 0..1: 0.33 at the desert edge, 0.5 at the steppe edge
 
-# (b) Continentality: interiors are drier
-cont = exp(−continentality_km / L_c)       # L_c ≈ 800 km
-# Triassic–Early Jurassic: Pangaean interiors extremely dry, while a strongly
-# seasonal "megamonsoon" wets the coasts and low latitudes (Parrish, 1993);
-# scale with megamonsoon_strength. v1 has no seasons, so the monsoon raises
-# annual moisture near coasts rather than creating a wet/dry cycle.
-
-# (c) Local topography, from the global terrain function (tile-independent)
-lowness = clamp((Hsmooth − H) / 20 m, −1, 1)   # Hsmooth = base + correction (no detail)
+# Local topography only nudges moisture (tile-independent, so seams match)
+lowness  = clamp((Hsmooth − H) / 20 m, −1, 1)    # Hsmooth = base + correction (no detail)
 near_sea = exp(−coarseCoastDistKm / 5)
 
-moisture = clamp(
-      0.45 * zonal(lat)
-    + 0.30 * cont * zonal_floor
-    + 0.15 * max(lowness, 0)
-    + 0.10 * near_sea, 0, 1)
+moisture = clamp(base + 0.08 * max(lowness, 0) + 0.04 * near_sea, 0, 1)
 ```
 
-Local topography only nudges moisture: the zonal and continental terms dominate. That keeps generated detail from creating rainforests the data cannot support.
+`temperatureC` is the lapse-corrected value from §2, so cold highlands come out wetter than the warm lowland around them, as they would.
+
+Caveats, shown on the info card:
+- The 65 Ma slice's temperature comes from the 60 Ma grid (pipeline §1c override); its info card says so via CLIMATE_AGE_MISMATCH.
+- The precipitation is raw climate-model output, not proxy-adjusted, and has no seasons in v1. A strongly seasonal climate (e.g. the Pangaean megamonsoon, Parrish 1993) is represented only by its annual total.
+- The model ran on the palaeogeography of Valdes et al. (2021), not the 2024 DEMs. Near coasts the two disagree slightly, so bilinear sampling can pick up a sea-cell value; the coastal terms above keep this small.
 
 ```
 # INVARIANT: moisture and temperature are identical on shared tile edges
+# INVARIANT: moisture is monotonic in precipitation at fixed temperature
 ```
 
 ---
@@ -245,8 +239,9 @@ if slice.aftermathMode and toggle == FERN_SPIKE:
         renormalise
     plantMix = { fern: 0.85, horsetail: 0.1, pioneer_other: 0.05 }, all "inferred"
     vegDensity *= 0.6
-    temperatureC: grid value (the early Palaeocene was cooler than before the
-                  boundary, Vajda et al. 2004; the 65 Ma grid already reflects it)
+    temperatureC: grid value (the slice uses the 60 Ma Palaeocene grid, pipeline
+                  §1c override; Vajda et al. 2004 report a cooler early Palaeocene,
+                  which a −2 °C offset could represent; CHECK the magnitude first)
 ```
 
 Both phases set the provenance bit `AFTERMATH_RECON`; info cards cite the sources above.
@@ -279,6 +274,8 @@ Info cards on ground and vegetation show: biome name, temperature and moisture e
 # INVARIANT: seam continuity of moisture, temperature and weights
 # INVARIANT: deterministic: same tile → identical BiomeField
 # INVARIANT: HIGHLAND_ICE weight is zero in every slice where ice_possible is false
+# BENCHMARK: share of land vertices with aridity < 1 per slice, reported against the
+#            Köppen B-zone extent in Scotese et al. (2021); report, do not fail
 # SNAPSHOT: a fixed set of reference tiles (e.g. Hell Creek at 65/70 Ma, Morrison
 #           at 150 Ma, central Pangaea at 230 Ma) produce the expected dominant biome
 
@@ -300,6 +297,17 @@ Info cards on ground and vegetation show: biome name, temperature and moisture e
 
 ## Dependencies added to the pipeline
 
-- `continentality.py` (pipeline §1b): distance to coast on the 1° DEM. Biome needs coast distances over hundreds of kilometres, which a tile's loaded region (~33 km) can't provide. Signed value (land +, sea −), so `continentality_km` above means `max(value, 0)`.
-- `ingest_temperature.py` (pipeline §1c): Scotese et al.'s 1° temperature grids mapped to our slices, as `globe/{age}.temp.i16.gz`.
-- `climate_by_age.json` (pipeline §1d): hand-curated per-slice parameters (moisture curve, megamonsoon strength, ice flag, alternative global mean, aftermath constants), each with a cited source. Full references are in `REFERENCES.md`.
+- `ingest_climate.py` (pipeline §1c): the 1° temperature and precipitation grids mapped to our slices, as `globe/{age}.temp.i16.gz` and `globe/{age}.precip.i16.gz`.
+- `continentality.py` (pipeline §1b) is no longer used by biome: interior dryness now comes from the precipitation grids. The globe's hover readout still shows it.
+- `climate_by_age.json` (pipeline §1d): hand-curated per-slice parameters (ice flag, alternative global mean, aftermath constants), each with a cited source. Full references are in `REFERENCES.md`.
+
+---
+
+## Amendments from coding (2026-11-01)
+
+- **§4 softmax gated:** a plain softmax spreads weight onto every biome when no score is high (it put "beach" at 375 m). Each biome's share is now multiplied by `ramp(score, 0, 0.05)`, so biomes whose rules don't apply get nothing; if none apply, the vertex is fern openland. Ice is a hard exclusion where it isn't possible.
+- **§4 thresholds tuned:** seasonal woodland from 6–12 °C (not 12–18 °C), with moisture 0.45–0.6, so cool humid mid-latitudes aren't fern openland; montane forest needs moisture ≥ 0.4–0.55; heat stress adds to the desert score (Early Triassic tropics).
+- **§7 Impact Winter:** which forests died is decided on the **pre-impact** climate; frost covers non-forest ground as annual means fall from 8 °C to 0 °C; the rest is a new **bare ground (aftermath)** biome (18 biomes in all). The sky becomes a grey-brown overcast, sunlight scales with the cooling curve (render §6).
+- **§7 Fern Spike:** ferns carpet the ground, including under former forest; 30% of former forest remains as standing dead snags.
+- **§3 coast term:** distance to the nearest 0.1° sea node, from the DEM window terrain already holds, sampled on a 17 × 17 lattice per tile. The 1° climate fields are sampled on the same lattice.
+- **§5 provisional:** `climate_by_age.json` doesn't exist yet, so ice flags live in `climate.ts` with their citation, and the plant mix is a qualitative prior tagged `PLANTS_FROM_PRIOR`.

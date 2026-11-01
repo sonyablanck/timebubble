@@ -4,6 +4,8 @@ Implements DESIGN.md §2 rule 2: every feature carries a source tag, and the pla
 
 Conventions as in `pipeline/PSEUDOCODE.md`: `# INVARIANT:` lines become tests, `# CHECK:` lines are facts to verify first.
 
+> **Status: partly coded.** `flags.ts` (§1 registry with plain-language `FLAG_INFO`, §2 `levelOf`) is coded and tested. The §3 overlay exists for terrain in walk mode (Source mode only, toggled with P: level colour at α 0.55 plus dots/hatching, uniform-only toggle) with its legend; terrain, sea and sky info cards (§4) show the source cell, local height, smooth surface, generated detail and flags. Not yet: focus and evidence modes, the coastline outline, "in view" shares, reports and cite-this-view (§5).
+
 ---
 
 ## 0. Core types
@@ -45,7 +47,7 @@ One `u32` namespace for the whole app, so a flag means the same thing everywhere
 | 12 | COLOUR_GENERATED | ecology | colour invented (always on organisms) |
 | 13 | STRADDLES_KPG | ecology | an occurrence's age range crosses 66 Ma |
 | 14 | AFTERMATH_RECON | biome, ecology, render | Aftermath mode override active |
-| 15 | TEMP_AGE_MISMATCH | biome | temperature grid differs from slice age by > 3 Myr |
+| 15 | CLIMATE_AGE_MISMATCH | biome | temperature or precipitation grid differs from slice age by > 3 Myr |
 | 16 | SKY_GENERATED | render | sky, light and weather (always on) |
 | 17–31 | reserved | | |
 
@@ -63,7 +65,7 @@ FLAG_INFO[GENERATED_COAST] = {
   short: "Generated coastline",
   long:  "Fine-scale detail moved this point across sea level. The source data
           (≈11 km cells) put the coastline nearby, but not exactly here.",
-  refs:  ["scotese2018"]
+  refs:  ["scotese2024data"]
 }
 ```
 
@@ -157,7 +159,8 @@ cardFor(record):
     evidence: list (most direct first)
         terrain: source cell value, local height, generated share, dataset DOI
         biome: temperature (grid value, source interval, age mismatch),
-               moisture "(model)", alternative estimate (Judd et al. 2024 ΔGMST)
+               precipitation and aridity "(model)", alternative estimate
+               (Judd et al. 2024 ΔGMST)
         animal/plant: occurrence count, nearest distance, age ranges,
                       PBDB occurrence and reference links, size source
     notes: one sentence per set flag (FLAG_INFO.long)
@@ -176,12 +179,13 @@ A research user should be able to reproduce and cite exactly what they saw.
 exportReport(view) -> JSON + CSV (download, nothing leaves the browser)
 {
   app: { name: "Time Bubble", version, commit },
-  data: { pipeline_version, inputs_hash, plate_model },
+  data: { pipeline_version, data_version, plate_model },
   view: { sliceAge, aftermath phase/year, tile id, centre palaeo lat/lon,
           camera position, settings (representativeFauna, overlay mode) },
   datasets: [ name, version, DOI, licence ] ,            # from credits.json
-  climate: climate_by_age[sliceAge] with ref keys,
-  temperature: { source_interval, source_age, age_mismatch_myr },
+  climate: { params: climate_by_age[sliceAge] with ref keys,
+             grids: globe/{age}.climate.json (temperature and precipitation:
+                    source file, source age, age mismatch) },
   roster: [ taxon, level, flags (names), occurrence ids, reference ids,
             nearestKm, size source, density boosted? ],
   shares: { data, inferred, generated },                  # from the legend sampler
@@ -189,9 +193,10 @@ exportReport(view) -> JSON + CSV (download, nothing leaves the browser)
 }
 
 citeThisView() -> text, e.g.
-  "Time Bubble v{version} (data {inputs_hash}), {sliceAge} Ma, tile {id}
-   ({lat}°, {lon}° palaeo). Built on Scotese & Wright (2018); Scotese (2016, 2022);
-   the Paleobiology Database (accessed {date}). Provenance report attached."
+  "Time Bubble v{version} (data {data_version}), {sliceAge} Ma, tile {id}
+   ({lat}°, {lon}° palaeo). Built on Scotese et al. (2024) PaleoDEMs and plate
+   model; Scotese (2022) and Valdes, Scotese and Lunt (2021) climate grids; the
+   Paleobiology Database (accessed {date}). Provenance report attached."
 ```
 
 The view can also be encoded in the URL (`?age=150&lat=..&lon=..&cam=..`), so a link reopens the same tile and camera. Report + link together make a view reproducible.

@@ -27,7 +27,7 @@ A desktop browser explorer for Mesozoic Earth. Pick a time and a place on a reco
 
 ## 2. Guiding principle: honesty about resolution
 
-The finest global elevation data is 0.1° (about 11 km). The globe view uses the 1° set (about 100 km). Anything finer than 0.1° is generated. Two rules follow:
+The finest global elevation data is 0.1° (about 11 km). The globe view uses a 1° grid (about 100 km) area-averaged from it. Anything finer than 0.1° is generated. Two rules follow:
 
 1. **Source data is ground truth.** Generated detail must never contradict it. The terrain's mean elevation over each 0.1° cell must match the source value, and land/sea classification must agree with the source at its native resolution.
 2. **Provenance is a feature.** Each feature carries a `source` tag (`data` / `inferred` / `generated`). A toggleable overlay (default off, one key to switch) colour-codes the world by source. Info cards always show the source tag, whether or not the overlay is on, broken down by aspect (presence, position, size, colour). Levels are derived from a single flag registry by one function, so no module can label something `data` by hand. For research use, any view can be exported as a provenance report (datasets, versions, taxa with occurrence IDs, climate parameters, settings) with a "cite this view" string and a reproducible URL.
@@ -51,8 +51,9 @@ This is the project's main point of difference from existing tools, and it is wh
 | A9 | Determinism | Fixed global tile grid; terrain noise seed = hash(slice), global; scatter seed = hash(slice, layer, scatter-grid cell), world-anchored | The same place always generates the same tile; global terrain noise and world-anchored scatter keep neighbouring tiles seamless |
 | A10 | Art direction | Stylised low-poly, generic body-plan models | Solves the art bottleneck; makes uncertainty legible rather than hiding it |
 | A11 | Erosion | None in v1; seam-safe erosion in v2 | Erosion breaks tile seams unless run with overlap; not worth the complexity yet |
-| A12 | Plate model | **PALEOMAP** (Scotese 2016) for everything | The PaleoDEMs are built on it; mixing models can misplace fossils relative to coastlines by several degrees |
-| A13 | Resolution split | 1° DEM for the globe; 0.1° DEM, chunked by region, for terrain | Globe stays light; terrain gets the best constraint available, loaded on demand |
+| A12 | Plate model | **PALEOMAP v19o_r1d** (Scotese et al. 2024) for everything, from the same Zenodo record as the PaleoDEMs | The DEMs must share a plate model with the fossils; the two models in the record differ by a median 130–190 km. The record's explanation contradicts itself on which model the maps use, so we tested both against the DEMs: v19o puts 25–55% fewer present-day continental points into deep ocean at every slice tested (`pipeline/checks/plate_model_check.py`) |
+| A13 | Resolution split | 1° grid for the globe, area-averaged from the 0.1° DEM; 0.1° DEM, chunked by region, for terrain | Globe stays light; terrain gets the best constraint available, loaded on demand; globe and terrain come from one grid, so they always agree |
+| A18 | PaleoDEM release | **2024 release** (Scotese et al. 2024, v24221) rather than Scotese & Wright (2018) | Coastlines revised against PBDB fossil localities (Kocsis and Scotese 2021); same CC BY 4.0 licence; ships with its own plate model |
 | A14 | Height format | Raw int16 (metres, little-endian), gzipped (`.i16.gz`), decoded in-browser with `DecompressionStream` | Browsers decode PNGs to 8 bits per channel; raw int16 is lossless and needs no decoder library |
 | A16 | UI | Preact + TSX, HTML overlaid on the canvas; one view-state store synced to the URL | Small (MIT, ~4 KB); familiar React model that AI tools write fluently; accessible HTML instead of WebGL UI |
 | A17 | Walk mode streaming | Floating origin at the current tile centre; 3 × 3 tile ring streamed around the player; far horizon drawn from the 0.1° DEM with no generated detail | Keeps float32 precision; lets players walk indefinitely; distant terrain is data, not invention |
@@ -64,12 +65,12 @@ This is the project's main point of difference from existing tools, and it is wh
 
 | Source | Use | Format | Licence |
 |---|---|---|---|
-| PALEOMAP PaleoDEMs (Scotese & Wright 2018, v2) | Elevation and bathymetry per slice (0 m = palaeo-shoreline). 1° set for 540–0 Ma; 0.1° set for 540–0 Ma | 1°: GeoTIFF/netCDF; 0.1°: netCDF only | CC BY 4.0 |
-| PALEOMAP plate model (rotation `.rot` + static polygons `.gpml`), from the PALEOMAP PaleoAtlas for GPlates v3 | Rotating fossil coordinates to each slice | GPlates formats | CC BY 4.0 (Zenodo record; confirm against the readme inside the zip) |
-| Paleobiology Database (PBDB) API | Plant and animal occurrences: modern lat/lng, age range, taxonomy, environment | CSV/JSON | CC BY 4.0 |
-| Scotese palaeotemperature grids (*Global Mean Surface Temperatures for 100 Phanerozoic Time Intervals*) | Mean annual surface temperature, 1°, 100 stage-level intervals; HadCM3L adjusted to proxies (Scotese et al. 2021; Valdes, Scotese and Lunt 2021) | netCDF / CSV | CC BY 4.0 |
+| PALEOMAP PaleoDEMs, 2024 release (Scotese et al. 2024, Zenodo v24221, item 5a) | Elevation and bathymetry per slice (0 m = palaeo-shoreline), 0.1°; the 1° globe grid is derived from it | netCDF, 3601×1801 (a 1° CSV, item 5b, is used only as a cross-check) | CC BY 4.0 |
+| PALEOMAP Global Plate Model v19o_r1d (same record, item 3a) | Rotating fossil coordinates to each slice | GPlates formats (`.rot` + polygons) | CC BY 4.0 |
+| Paleobiology Database (PBDB) API | Plant and animal occurrences: modern lat/lng, age range, taxonomy, environment | CSV/JSON | CC0, as stated in PBDB's download metadata since at least Nov 2025 (previously CC BY 4.0); we credit it either way and record the licence each download states |
+| Mean annual temperature, version scotese02a_v21321 (same 2024 record, item 6a1; identical to Scotese 2022) | Temperature per slice, 1°, >100 stage-level intervals; HadCM3L adjusted to proxies (Scotese et al. 2021; Valdes, Scotese and Lunt 2021) | List-format CSV, 361×181 node-registered | CC BY 4.0 |
+| Mean annual precipitation, version scotese_02 (same record, item 6b2) | Moisture per slice (biome); raw HadCM3L model output, not proxy-adjusted (Valdes, Scotese and Lunt 2021) | netCDF, 361×181 node-registered (185–255 Ma files padded to 366 columns). Units are **mm/day**, not the mm/month the record's explanation states (area means 3.2–4.1; Earth today ≈ 2.7 mm/day) | CC BY 4.0 |
 | Published climate values (Judd et al. 2024; Brugger et al. 2017; Vajda et al. 2004; others in `REFERENCES.md`) | Uncertainty notes, aftermath constants, test benchmarks | Hand-entered with citations in `climate_by_age.json` | Facts with citation; check PhanDA repo licence before copying its files |
-| Palaeo-precipitation (v2) | Replace the zonal moisture model | — | Candidate: Chandra et al. 2021 maps (13 slices, 14–249 Ma); licence and plate model unconfirmed |
 
 **Software dependencies**
 
@@ -89,11 +90,11 @@ Attribution for all datasets appears in-app (About panel and the provenance over
 ## 5. Pipeline (offline, `/pipeline`)
 
 1. **ingest_dem.py**: for each slice, 250–65 Ma (38 slices):
-   - **Globe:** 1° DEM → `.i16.gz` heightmap (360×181) + JSON sidecar (slice age, grid registration).
+   - **Globe:** 0.1° DEM area-averaged to 1° → `.i16.gz` heightmap (360×181) + JSON sidecar (slice age, grid registration, resampling method).
    - **Terrain:** 0.1° DEM → `.i16.gz` chunks of 10°×10° (101×101 cells, one-cell overlap) + index. The app loads only the chunks around the selected location.
    - **Continentality:** signed distance to coast (km) on the 1° grid, `globe/{age}.continentality.i16.gz`, used by biome.
-   - **Temperature:** the nearest-age Scotese 1° temperature grid for each slice, `globe/{age}.temp.i16.gz` (0.01 °C units), with the age mismatch recorded.
-   - **Climate parameters:** hand-curated `climate_by_age.json` (zonal moisture curve, dry-belt latitude, megamonsoon strength, ice flag, alternative global means, aftermath constants), each value cited.
+   - **Climate grids** (`ingest_climate.py`): the 1° temperature and precipitation grids for each slice, `globe/{age}.temp.i16.gz` (0.01 °C) and `globe/{age}.precip.i16.gz` (0.01 mm/day), with source intervals, age mismatches and any override in `globe/{age}.climate.json`. Every slice has an exact-age interval. One deliberate override: the 65 Ma slice uses the **60 Ma temperature grid**, because the 65 Ma grid is an icehouse outlier (area mean 8.1 °C) that appears to encode K–Pg cooling, which Aftermath mode models separately (§8). The 5 Myr mismatch is flagged in-app.
+   - **Climate parameters:** hand-curated `climate_by_age.json` (ice flag, alternative global means, aftermath constants), each value cited.
 2. **ingest_pbdb.py**: for the Mesozoic as a whole, fetch occurrences with **modern** lat/lng, early/late age, taxonomy and environment. Cache the raw download with its retrieval date.
 3. **rotate.py** (pyGPlates + PALEOMAP): for each slice, take occurrences whose age range overlaps the slice window and rotate their modern coordinates to the **slice's reconstruction age**, so fossils sit on the same map as that slice's DEM. Drop points that fall outside any plate polygon, and log them.
 4. **classify_taxa.py**: map each taxon to a **body-plan class** (e.g. small theropod, large theropod, sauropod, ornithopod, ceratopsian, pterosaur, marine reptile, conifer, cycad/bennettitalean, fern, early angiosperm). Unmapped taxa are listed for manual review, not guessed.
@@ -124,22 +125,23 @@ src/
 
 ## 7. Terrain generation
 
-- **Tile size:** 4 km × 4 km, heightfield 513×513 (~8 m spacing), split into 8×8 render chunks with LOD. A tile sits within roughly one 0.1° source cell.
-- **Base surface:** bicubic interpolation of the **0.1° DEM** across the tile and its neighbouring cells.
+- **Tile size:** 4 km × 4 km on a fixed global grid, heightfield 513×513 (~8 m spacing). A tile sits within roughly one 0.1° source cell. LOD is per tile: full resolution underfoot, every 4th vertex for the surrounding ring (amended 2026-10-31; `terrain/PSEUDOCODE.md`).
+- **Base surface:** bicubic (Catmull-Rom) interpolation of the **0.1° DEM** across the tile and its neighbouring cells.
 - **Detail:** noise evaluated in **global palaeo-coordinates**, so adjacent tiles match at the edges with no seam handling.
 - **Relief scaling:** noise amplitude depends on terrain class, derived from source elevation and local gradient:
   - abyssal / shelf / coastal plain: low
   - lowland / plateau: moderate
   - orogen: high, with ridged noise
-- **Mean preservation:** after adding detail, subtract the mean residual per 0.1° cell so the source value still holds.
+- **Mean preservation:** after adding zero-mean detail, each 0.1° cell gets its residual back through a bump that is zero on the cell's edges, so the cell's mean equals the source value exactly and neighbours are untouched (tested < 1 m on the real DEM).
 - **Coastline:** the 0 m contour of the final surface. Generated coastline wiggle is tagged `generated`; the source land/sea call is tagged `data`.
-- **Water:** sea is a plane at 0 m. Rivers and lakes are deferred to v2, alongside erosion.
+- **Water:** sea is a surface at 0 m, curved with the Earth. Rivers and lakes are deferred to v2, alongside erosion.
+- **Horizon:** beyond the 3 × 3 tiles, a ±60 km far ring is drawn from the DEM with no invented detail (`data`); near tiles blend into it at their outer edge.
 
 ---
 
 ## 8. Biome and ecology
 
-**Biome (v1, rule-based)** from palaeolatitude, elevation, distance to coast and slice age. Temperature comes from published reconstruction grids, corrected for local elevation; moisture comes from a cited zonal model (no open gridded precipitation yet). Together they feed soft, blended biome weights. Info cards show the spread between reconstructions (e.g. Judd et al. 2024 run warmer than Scotese et al. 2021 in hothouse intervals). Local topography only nudges moisture, so generated detail can't create climates the data don't support. The plant mix comes from nearby plant occurrences where they exist, falling back to an age-aware prior. All outputs are tagged `inferred`.
+**Biome (v1, rule-based)** from palaeolatitude, elevation, distance to coast and slice age. Temperature comes from published reconstruction grids, corrected for local elevation. Moisture comes from modelled precipitation grids, turned into an aridity ratio with the Köppen–Geiger dryness threshold (Peel, Finlayson and McMahon 2007). Together they feed soft, blended biome weights. Info cards show the spread between reconstructions (e.g. Judd et al. 2024 run warmer than Scotese et al. 2021 in hothouse intervals). Local topography only nudges moisture, so generated detail can't create climates the data don't support. The plant mix comes from nearby plant occurrences where they exist, falling back to an age-aware prior. All outputs are tagged `inferred`.
 
 Accuracy constraints the rules must respect:
 - No grass ground cover. Grasses are rare before the Late Cretaceous; the understorey is ferns, horsetails and similar.
@@ -157,7 +159,7 @@ Accuracy constraints the rules must respect:
 
 **Post-extinction layer**
 
-- **K–Pg boundary rule (66 Ma):** for the 65 Ma slice, the occurrence window is clipped to 62.5–66 Ma. Non-avian dinosaurs are excluded outright, and occurrences whose age range straddles 66 Ma are tagged `inferred`. This stops Maastrichtian dinosaurs from leaking into the post-extinction world.
+- **K–Pg boundary rule (66 Ma):** for the 65 Ma slice, the occurrence window is clipped to 62.5–66 Ma. Non-avian dinosaurs are excluded outright (in the pipeline), as are pterosaurs and marine reptiles (in ecology/), since none survived, and occurrences whose age range straddles 66 Ma are tagged `inferred`. This stops Maastrichtian dinosaurs from leaking into the post-extinction world.
 - **65 Ma slice (data-led):** an early Palaeocene recovery world. Sparse fauna, dominated by mammals, birds, crocodylomorphs and turtles. Vegetation is impoverished, with ferns and pioneer plants prominent. The UI marks it as "after the extinction" on the time slider.
 - **Aftermath mode (optional toggle on the 65 Ma slice)** uses the 65 Ma terrain (plate positions barely differ over ~1 Myr) and has two phases, because the literature puts them on very different timescales:
   - **Impact Winter (years 0–30):** dark sky; frost and snow even in the tropics; standing dead forest; no living plants. Temperatures drop by up to 26 °C, stay sub-freezing on annual average for ~3 years and recover over ~30 years (Brugger, Feulner and Petri 2017). A slider picks the year.
@@ -172,7 +174,7 @@ Accuracy constraints the rules must respect:
 - Modern coastlines overlay on the globe: present-day coastlines rotated to each slice in the pipeline (first half of the next item).
 - "Where was my town?": rotate a modern location to each slice with the same pyGPlates + PALEOMAP step, either precomputed on a grid or run as a small lookup table shipped with the app.
 - Seam-safe hydraulic erosion, rivers and lakes.
-- Climate-model-driven biomes, seasons and weather.
+- Seasonal climate (monthly temperature and precipitation), seasons and weather.
 - Palaeozoic and Cenozoic slices.
 - Animal behaviour.
 
@@ -189,31 +191,44 @@ Accuracy constraints the rules must respect:
 
 ## 11. Licensing obligations
 
-- **CC BY 4.0 sources** (PaleoDEMs, PALEOMAP plate model, PBDB, palaeotemperature grids): credit each source, link the licence, state what was changed (e.g. "resampled to int16 heightmaps", "coordinates rotated with PALEOMAP", "nearest-age interval matched to each slice, stored in 0.01 °C units"), and add no further restrictions. Commercial use is allowed.
+- **CC BY 4.0 sources** (PaleoDEMs 2024, PALEOMAP plate model, palaeotemperature and precipitation grids; PBDB was CC BY 4.0 until it moved to CC0): credit each source, link the licence, state what was changed (e.g. "resampled to int16 heightmaps", "coordinates rotated with PALEOMAP", "nearest-age interval matched to each slice, stored in 0.01 °C units"), and add no further restrictions. Commercial use is allowed.
 - **Derived data** we publish must carry the same attribution. Releasing it as CC BY 4.0 keeps this simple.
 - **pyGPlates (GPL-2.0-only)** is a pipeline dependency installed separately, never redistributed. Our pipeline scripts can be MIT because MIT is GPL-compatible. If pyGPlates is ever bundled (e.g. a Docker image), that distribution must meet GPL-2.0 terms.
-- **PBDB attribution:** credit the Paleobiology Database and its contributors, with the download date and query parameters in `CREDITS.md`.
+- **PBDB attribution:** credit the Paleobiology Database and its contributors, with the download date and query parameters in `CREDITS.md`. CC0 removes the legal requirement, not the scholarly one: we keep the credit and per-occurrence reference numbers.
 
 **Citations for CREDITS.md and the in-app About panel**
 
 *Datasets (shipped in derived form)*
-- Scotese, C.R. and Wright, N.M. (2018) *PALEOMAP Paleodigital Elevation Models (PaleoDEMS) for the Phanerozoic* (v2) [Dataset]. Zenodo. doi:10.5281/zenodo.5460860. CC BY 4.0.
-- Scotese, C.R. (2016) *PALEOMAP PaleoAtlas for GPlates* (v3) [Dataset]. Zenodo. doi:10.5281/zenodo.10596610. CC BY 4.0.
+- Scotese, C.R., Vérard, C., Burgener, L., Elling, R.P. and Kocsis, A.T. (2024) *Phanerozoic-scope supplementary material to 'The Cretaceous World: Plate Tectonics, Paleogeography, and Paleoclimate' from the PALEOMAP project* (v24221) [Dataset]. Zenodo. doi:10.5281/zenodo.10659112. CC BY 4.0. (PaleoDEMs, item 5a; plate model v19o_r1d, item 3a.)
 - Scotese, C.R. (2022) *Global Mean Surface Temperatures for 100 Phanerozoic Time Intervals* (scotese02a_v21321) [Dataset]. Zenodo. doi:10.5281/zenodo.5718392. CC BY 4.0.
-- The Paleobiology Database. Available at: https://paleobiodb.org (CC BY 4.0) (Accessed: [date]).
+- The Paleobiology Database. Available at: https://paleobiodb.org (licence as stated at download; CC0 since 2025) (Accessed: [date]).
 
-*Papers behind the temperature grids (cited at the dataset's request)*
+*Papers behind the PaleoDEMs (cited at the dataset's request)*
+- Scotese, C.R., Vérard, C., Burgener, L., Elling, R.P. and Kocsis, A.T. (2024) 'The Cretaceous world: plate tectonics, palaeogeography and palaeoclimate', *Geological Society, London, Special Publications*, 544. doi:10.1144/SP544-2024-28.
+- Kocsis, Á.T. and Scotese, C.R. (2021) 'Mapping paleocoastlines and continental flooding during the Phanerozoic', *Earth-Science Reviews*, 213, 103463. doi:10.1016/j.earscirev.2020.103463.
+
+*Papers behind the temperature and precipitation grids (cited at the dataset's request)*
 - Scotese, C.R., Song, H., Mills, B.J.W. and van der Meer, D.G. (2021) 'Phanerozoic paleotemperatures: the earth's changing climate during the last 540 million years', *Earth-Science Reviews*, 215, 103503. doi:10.1016/j.earscirev.2021.103503.
 - Valdes, P.J., Scotese, C.R. and Lunt, D.J. (2021) 'Deep ocean temperatures through time', *Climate of the Past*, 17(4), pp. 1483–1506. doi:10.5194/cp-17-1483-2021.
 
-*Climate values entered by hand* (`climate_by_age.json`): Judd et al. (2024), Brugger, Feulner and Petri (2017), Vajda et al. (2004), Chandra et al. (2021), Parrish (1993), with full entries in `REFERENCES.md`. The About panel lists these alongside the datasets.
+*Methods and climate values entered by hand* (`climate_by_age.json`, biome rules): Judd et al. (2024), Brugger, Feulner and Petri (2017), Vajda et al. (2004), Peel, Finlayson and McMahon (2007), with full entries in `REFERENCES.md`. The About panel lists these alongside the datasets.
 
 ---
 
 ## 12. Remaining checks
 
-- Open the PaleoAtlas v3 zip and confirm its readme matches the Zenodo CC BY 4.0 licence for the rotation and polygon files.
+- ~~Plate model~~ **Resolved 2026-10-31:** v19o_r1d (A12). **Confirmed with fossils 2026-11-01:** terrestrial-environment PBDB occurrences rotated with v19o land on 1° DEM land 67–99% of the time per slice, and on land or shelf above −200 m 88–99.7% (`pipeline/checks/fossil_land_check.py`).
+- Compare the derived 1° globe against the record's 1° CSV (item 5b) for one slice.
+- The climate grids come from HadCM3L runs on the palaeogeography of Valdes et al. (2021), not the 2024 DEMs, so coastlines differ slightly. Measure the land/sea disagreement per slice and report it in the climate sidecar.
+- ~~Climate interval ages~~ **Done 2026-10-31:** every slice 65–250 Ma has an exact-age temperature and precipitation file; real-data quirks (legend anchors at 90°N in the temperature CSVs, varying pole rows, NaN padding columns, float32 coordinates in the 100 Ma DEM, mm/day units) are handled and tested.
+- Ask the dataset authors whether the 65 Ma temperature grid deliberately represents K–Pg cooling, and confirm the precipitation units (mm/day, not mm/month as stated).
 - Confirm pyGPlates 1.0's bundled licence file (conda-forge lists GPL-2.0-only).
-- Read the temperature dataset's readme: variable, units, interval ages, grid registration. Confirm its HadCM3L runs use the PALEOMAP palaeogeography.
 - Check the PhanDA (Judd et al. 2024) GitHub repository licence.
 - Confirm the unverified page ranges listed at the end of `REFERENCES.md`.
+- ~~Fossil pipeline on real data~~ **Done 2026-11-01** (see the check above; 3 non-avian dinosaurs excluded from the 65 Ma slice). Still to do: extend `rules.csv` for the remaining unmapped groups (lycopsids, gnetophytes, tracks and eggs, dinosaurs recorded without a family) and source the size hints.
+- Build `climate_by_age.json` (pipeline §1d): ice flags now live in `src/biome/climate.ts`, and the Judd et al. (2024) ΔGMST line on info cards waits for it.
+- Check the Impact Winter light curve and its spatial pattern against Brugger, Feulner and Petri (2017); v1 cools uniformly by 26 °C at peak.
+- Source the ecology placeholders: body-plan default lengths and masses (`src/ecology/roster.ts`) and per-taxon size hints in `pipeline/rules.csv`; calibrate the herbivore and omnivore density multiples (×10, ×3 of the carnivore constant) against Damuth (1981).
+- Calibrate terrain provenance levels. Strength is |generated| / the class amplitude, so in orogens (600 m) a point with up to ~150 m of invented relief still reads `data`. Consider an absolute floor (e.g. > 20 m generated is at least `inferred`) before the overlay is used for research figures.
+- Animal integument (pseudocode render §8): the drawn models have none. Build the clade table (feathers, filaments, scales) from published integument reviews, cite it in `REFERENCES.md`, and tag it `inferred`.
+- Review the animal density display: each taxon's "realistic" density is Damuth's trophic-level density for its body mass times its evidence share of that trophic level, so a genus with one distant occurrence reads as very rare (e.g. ≈ 1 per 56,000 km² for *Furcatoceratops* at Hell Creek, 70 Ma). Decide whether that share is the right reading before the figures are quoted.

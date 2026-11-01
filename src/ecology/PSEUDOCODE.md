@@ -4,6 +4,8 @@ Implements DESIGN.md §8 (ecology half): which organisms appear on a tile, how m
 
 Conventions as in `pipeline/PSEUDOCODE.md`: `# INVARIANT:` lines become tests, `# CHECK:` lines are facts to verify first. Numeric values are starting points to tune unless cited.
 
+> **Status: coded** (`src/ecology/`, see its README) and run on the real PBDB data, with a field guide panel (G) in walk mode. Plants and animals are placed but not drawn yet (render §7–§8). The §1a `CHECK` is resolved (74 PBDB environment strings mapped). Amendments from coding are at the end.
+
 ---
 
 ## 0. Interfaces
@@ -291,3 +293,16 @@ The tile also gets a **field guide** panel listing the whole roster, so taxa pre
 ## Amendment to DESIGN.md
 
 - **A9:** scatter seeds are **world-anchored** per scatter-grid cell (`hash(slice, layer, cell)`), not per tile, so plants and spawn sites match across tile edges.
+
+---
+
+## Amendments from coding (2026-11-01)
+
+- **§1 roster size:** every `data` taxon is kept, so N_MAX only limits inferred ones; fossil-rich places list far more than 40 taxa (202 at Hell Creek, 70 Ma).
+- **§1 family-level records:** an occurrence identified only to family (e.g. Ceratopsidae) is listed but not drawn when a genus of the same body plan is present, so the same animals aren't counted twice.
+- **§3 trophic constants:** carnivore k = 0.01 × 5,200^0.75 (Marshall et al. 2021); herbivores ×10 and omnivores ×3, provisional pending calibration against Damuth (1981).
+- **§3 sizes:** `size_hint` is still blank in `rules.csv`, so every taxon uses its body-plan default (listed in `roster.ts`, provisional, shown as "body-plan default" on cards).
+- **§4 layers:** canopy 10 m and understorey 7 m; ground cover is carried by the terrain colour, not instances. Over budget, instances are thinned evenly by seed rather than truncated. Fields are read on the step-4 vertex lattice so a tile's plants don't change with its resolution.
+- **§4 animals:** the budget goes to the largest animals first, at most 12 per taxon, so small mammals don't crowd out everything else.
+- **§5 K–Pg:** besides non-avian dinosaurs, pterosaurs and marine reptiles (mosasaurs, plesiosaurs) are excluded after 66 Ma; they did not survive the extinction.
+- **PBDB links:** the data service's documented single-record URLs (`data1.2/occs/single.json?id=…`, `data1.2/refs/single.json?id=…&show=both`); the classic web pages were unreliable when checked.

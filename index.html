@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Walk through the Mesozoic, built from real data, with every guess labelled." />
+    <title>Time Bubble</title>
+  </head>
+  <body>
+    <main class="stage">
+      <canvas id="globe" aria-label="Globe of the Earth at the selected time. Drag to rotate, scroll to zoom, click to pick a place. Keys: arrows rotate, plus and minus zoom, [ and ] change the time slice."></canvas>
+      <canvas id="walk" hidden aria-label="Walk mode: first-person view of the generated landscape. Click to capture the mouse, W A S D to move, Shift to run, Space to hop, F to fly, P for the provenance overlay, I or click to inspect, Escape to release the mouse and Escape again to return to the globe."></canvas>
+      <div id="app"><p class="loading">Loading Time Bubble…</p></div>
+    </main>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

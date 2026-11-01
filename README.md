@@ -12,7 +12,37 @@ The world is honest about what it knows. Everything carries a provenance tag:
 
 Press **P** in-app to see the overlay. Any view can be exported as a provenance report with a citation and a link that reopens it.
 
-> **Status: design stage.** The architecture and pseudocode for every module are written; implementation has not started yet.
+> **Status: early implementation.** Coded and tested on the real datasets: the pipeline's elevation, continentality, climate and manifest steps; the app's data loader; **the globe**, with its time slider, climate layers and picking; and **a first walk mode**: seamless generated terrain that keeps each 0.1° cell's mean, walking and flight, the horizon drawn from the DEM, sea, sky, the provenance overlay (P) and click-to-inspect; **biomes** from the modelled climate, including the 65 Ma Impact Winter and Fern Spike; and **fossils**: about 890,000 Paleobiology Database occurrences rotated to their slices, on the globe and in the plant mix. An **ecology** step decides which taxa live on each tile and how many (Damuth's law), and places plants and animal groups; the field guide (G) lists them with their evidence. **Plants and animals are drawn** in walk mode as generic low-poly body-plan models (animals move, but are not yet animated); click one to see its fossil evidence.
+
+## Try it
+
+**In your browser:** the live site, if published, is linked at the top of this repository's page (GitHub Pages). It needs a desktop browser with WebGL2 (recent Chrome, Edge, Firefox or Safari).
+
+**On your own computer** (Node 20 or newer, from https://nodejs.org):
+
+```bash
+git clone <this repository's URL>
+cd time-bubble
+npm install
+npm run dev
+```
+
+Open the address it prints (usually http://localhost:5173), click a place on the globe, then **Walk here**. The processed data ships in `public/data/`, so you don't need Python or the raw datasets unless you want to rebuild it.
+
+## Quick start
+
+```bash
+# 1. Data (Python 3.11+): download the inputs listed in pipeline/README.md, then
+pip install -r pipeline/requirements.txt
+python -m pipeline.ingest_dem && python -m pipeline.continentality \
+  && python -m pipeline.ingest_climate && python -m pipeline.build_manifest
+
+# 2. App (Node 20+)
+npm install
+npm run dev         # open the URL it prints: the globe; pick a place, then "Walk here"
+npm test            # unit tests, plus a check against public/data if it exists
+python -m pytest    # pipeline tests
+```
 
 ---
 
@@ -65,14 +95,14 @@ In the pseudocode, `# INVARIANT:` lines become automated tests, and `# CHECK:` l
 
 ## Roadmap
 
-1. **Pipeline:** download the datasets, resolve the `CHECK` items, produce `/public/data`.
-2. **Globe:** time slider, layers, picking.
-3. **Terrain:** one walkable tile, then streaming.
-4. **Biome and ecology:** plants first, then fauna.
+1. **Pipeline:** download the datasets, resolve the `CHECK` items, produce `/public/data`. *(elevation, climate, fossils, manifest: done; credits and climate parameters: to do)*
+2. **Globe:** time slider, layers, picking. *(done)*
+3. **Terrain and walk mode:** streaming tiles, walk and flight, overlay, inspect. *(first version done)*
+4. **Biome and ecology:** biomes, ecology and drawing plants and animals *(done; animation, plant LODs and the field guide's Locate button still to come)*.
 5. **Provenance overlay and reports.**
 6. **Polish:** render presets, photo mode, UI, accessibility.
 
-Deferred to v2: modern coastlines on the globe, "where was my town?", rivers and erosion, seasons, precipitation grids, a temperature-scenario toggle, Palaeozoic and Cenozoic slices, animal behaviour.
+Deferred to v2: modern coastlines on the globe, "where was my town?", rivers and erosion, seasons, a temperature-scenario toggle, Palaeozoic and Cenozoic slices, animal behaviour.
 
 ---
 
@@ -80,10 +110,9 @@ Deferred to v2: modern coastlines on the globe, "where was my town?", rivers and
 
 Time Bubble stands on openly licensed science:
 
-- Scotese, C.R. and Wright, N.M. (2018) *PALEOMAP Paleodigital Elevation Models (PaleoDEMS) for the Phanerozoic* (v2). doi:10.5281/zenodo.5460860. CC BY 4.0.
-- Scotese, C.R. (2016) *PALEOMAP PaleoAtlas for GPlates* (v3). doi:10.5281/zenodo.10596610. CC BY 4.0.
+- Scotese, C.R. et al. (2024) PALEOMAP PaleoDEMs and Global Plate Model v19o_r1d, supplementary material to *The Cretaceous World*. doi:10.5281/zenodo.10659112. CC BY 4.0.
 - Scotese, C.R. (2022) *Global Mean Surface Temperatures for 100 Phanerozoic Time Intervals*. doi:10.5281/zenodo.5718392. CC BY 4.0. Based on Scotese et al. (2021) and Valdes, Scotese and Lunt (2021).
-- The Paleobiology Database, https://paleobiodb.org. CC BY 4.0.
+- The Paleobiology Database, https://paleobiodb.org (CC0 since 2025; credited regardless).
 
 Full references, including the climate and ecology literature behind the model, are in [`REFERENCES.md`](REFERENCES.md).
 

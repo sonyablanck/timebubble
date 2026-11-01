@@ -2,6 +2,8 @@
 
 Loads, decodes and caches everything in `/public/data`. Pure I/O: no geometry and no rules. Works on the main thread and inside the terrain Web Worker (one instance per thread; no shared state).
 
+> **Status: coded** (`src/data/`, see its README). Settled while coding: the manifest carries each slice's grid dimensions (`grid`, `terrain_grid`), so no sidecar is fetched before decoding; `Grid` has a `scale` and `valueAt()` (temperature and precipitation are stored ×100); slice-snapping ties go to the older slice; cache-busting uses the manifest's `data_version` (a hash of the asset files); `climate()` returns `null` and `ecology()` an empty index until those files exist; ecology bin keys are the south-west corner of a 5° bin.
+
 Conventions as in `pipeline/PSEUDOCODE.md`: `# INVARIANT:` lines become tests, `# CHECK:` lines are facts to verify first.
 
 ---
@@ -21,6 +23,8 @@ interface SliceHandle {
   globe(): Promise<Grid>                        // 1° heightmap, for globe + continentality
   continentality(): Promise<Grid>               // 1° signed distance-to-coast, km
   temperature(): Promise<Grid>                  // 1° mean annual temperature, 0.01 °C units
+  precipitation(): Promise<Grid>                // 1° mean annual precipitation, 0.01 mm/day
+  climateMeta(): Promise<ClimateMeta>           // source intervals and age mismatches
   climate(): Promise<ClimateParams>             // this slice's entry in climate_by_age.json
   dem(): DemSampler                             // 0.1°, chunk-backed, see §3
   ensureRegion(lat, lon, radiusCells): Promise<void>  // preload chunks before sampling
@@ -46,12 +50,12 @@ manifest():
     validate(m):
         slices sorted descending by age, ages unique
         every path relative, no ".."
-        plate_model == "PALEOMAP (Scotese 2016)"
+        plate_model == "PALEOMAP v19o_r1d (Scotese et al. 2024)"
     cache and return m
 
 slice(age):
     m = await manifest()
-    s = nearest(m.slices, age)                  # A6: snap to nearest slice
+    s = nearest(m.slices, age)                  # A6: snap to nearest slice; ties → older
     return SliceHandle(s)                       # cheap; loads lazily
 ```
 
@@ -129,6 +133,9 @@ ecology():
     raw = await fetchJson("ecology/{age}.json")       # { binKey: Occurrence[] }
     return EcologyIndex(raw)
 
+binKey(lat, lon) = "{floor(lat/5)*5}_{floor(lon/5)*5}"   # south-west corner; 90°N → 85 bin
+                                                    # pipeline §5 must use the same rule
+
 EcologyIndex.near(lat, lon, radiusKm) -> Occurrence[]:
     bins = binKeys within radius (5° bins; handle lon wrap and poles)
     return occurrences in bins where greatCircleKm(o, point) <= radiusKm,
@@ -147,12 +154,12 @@ The whole slice file loads at once (expected to be a few MB at most per slice). 
 | Asset | Cache | Lifetime |
 |---|---|---|
 | manifest | memory | session |
-| globe, continentality, temperature | memory, current slice + previous | evicted on slice change |
+| globe, continentality, temperature, precipitation, climate meta | memory, current slice + previous | evicted on slice change |
 | climate_by_age.json | memory | session |
 | DEM chunks | LRU, 16 chunks per thread | session |
 | ecology | memory, current slice only | evicted on slice change |
 
-The HTTP cache does the rest. Files are immutable per data version, so the pipeline's `inputs_hash` is appended as a query string (`?v=…`) to bust stale caches after a data refresh.
+The HTTP cache does the rest. Files are immutable per data version, so the manifest's `data_version` (a hash of every asset file) is appended as a query string (`?v=…`) to bust stale caches after a data refresh. The manifest itself is fetched with `cache: "no-cache"`.
 
 ---
 

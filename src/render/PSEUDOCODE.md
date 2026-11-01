@@ -4,6 +4,8 @@ Draws walk mode: terrain, water, plants, animals, sky, and the provenance overla
 
 Conventions as in `pipeline/PSEUDOCODE.md`: `# INVARIANT:` lines become tests, `# CHECK:` lines are facts to verify first.
 
+> **Status: walk mode with life** (`src/render/`, see its README): §1 floating origin and 3 × 3 streaming, §2 walk and flight, §3 biome ground colours (blended in the worker, rock on steep slopes; the sea floor keeps the elevation ramp) and the Impact Winter / Fern Spike atmospheres, §4 sea (flat colour, no depth tint or foam yet), §5 far ring, §6 sky and equinox sun (no shadows, atmosphere presets or clouds beyond the sky shader), §7 plants and §8 animals as procedural low-poly body-plan models (simplified: see amendments), §9 picking for animals, plants, terrain, sea and sky. Not yet: §9 photo mode, §10 presets, plant LODs/impostors, animal animation. Amendments from coding are at the end.
+
 ---
 
 ## 0. Interface
@@ -250,3 +252,19 @@ Auto-select on first run from a 2 s benchmark; adjustable in settings. Draw call
 # INVARIANT: photo caption text equals provenance.citeThisView for the same view
 # BENCHMARK: frame time per preset on a scripted fly-through; tile streaming time
 ```
+
+---
+
+## Amendments from coding (2026-10-31)
+
+- **§1:** the origin is the current tile's centre; the projection is `x = R·Δlon·cos(lat)`, `z = −R·Δlat`, `y = h − d²/2R` (curvature everywhere, not only on the far ring). It is a pure function of lat/lon, so neighbouring tiles share edges exactly and rebasing re-projects vertices instead of shifting them.
+- **§1 streaming:** the tile underfoot loads at step 4 first (≈ 0.1 s), then at full resolution; ring tiles at step 4. LOD is per tile, not per chunk (terrain amendment).
+- **§2:** the ground clamp interpolates on the same two triangles per quad that the mesh draws. Uphill moves steeper than 40° are blocked (no sliding yet). Points in the sea start in flight.
+- **§5:** the far ring is a 241 × 241 metric lattice (500 m) of Hsmooth, ±60 km, rebuilt when the player is 20 km from its centre. It is cut (discarded) where near tiles are loaded, sits 6 m below Hsmooth, and ring tiles blend from H to Hsmooth within 1.2 km of the ring's outer edge, so the two meet under the tiles' skirts without gaps. Without this, the far ring showed through as hairline gaps.
+- **§6:** Three's analytic `Sky` with the equinox sun from the tile's palaeolatitude; `[` and `]` change the time of day. Logarithmic depth buffer for the 0.3 m – 150 km range.
+- **§7 plants (2026-11-01):** one procedural low-poly model per plant body plan plus a dead snag (`organisms/models.ts`, built from Three primitives, normalised to 1 unit tall and scaled to the instance height from ecology/). No LODs or impostors yet: each plan has a draw distance instead (trees 1.4–1.8 km, seed ferns 1 km, cycads 600 m, ferns and horsetails 450 m), and plants are re-selected when the player moves 150 m or a tile changes. One `InstancedMesh` per plan; wind sway in the vertex shader (world-position phase, none for snags). Variants per plan (spreading vs columnar conifer, tree fern, two snag stages) are not modelled.
+- **§8 animals (2026-11-01):** no rigs or animation clips. One rigid low-poly model per body plan (`animalGeometry`, unit length, facing −z), uniformly scaled to the taxon's length; motion comes from ecology/behaviour (idle, wander, graze, drink, rest; fliers circle) stepped within 2.5 km of the player, with a gait bob while moving, a lowered pose at rest, and fliers held 15–35 m above the ground. Integument is not modelled (no feathers or filaments), so the clade table CHECK stays open. Colour is one tint per individual from `colourSeed` (no countershading or patterns yet).
+- **§9 picking:** the crosshair ray tests animals (bounding sphere), then plants (vertical capsule), then terrain; the nearest wins. Animal cards give the taxon, body plan, evidence (PBDB occurrence and reference links), size, mass and Damuth density; plant cards give the plan, the local plant mix and its evidence, and the Aftermath die-off when set.
+- **Provenance overlay:** organisms carry an instanced `aLevel` (from `levelOf("plant" | "animal", flags)`) and share the terrain's overlay shader and uniform, so P tints them too.
+- **Performance:** at Hell Creek (70 Ma) about 10–45k plants are drawn (≈ 0.7 M triangles) plus up to 720 animals on the 3 × 3 ring. Fine on a GPU; software GL (headless tests) takes tens of seconds a frame, so the browser tests pause the loop and draw single frames.
+

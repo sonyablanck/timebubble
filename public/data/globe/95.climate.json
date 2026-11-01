@@ -1,0 +1,33 @@
+{
+ "age": 95,
+ "precip": {
+  "age_mismatch_myr": 0.0,
+  "area_mean": 4.011,
+  "max": 18.632,
+  "min": 0.043,
+  "nodata_filled": 0,
+  "override_reason": null,
+  "pole_cells_flattened": 720,
+  "provenance": "inferred",
+  "scale": 100,
+  "source": "Mean annual precipitation, HadCM3L scotese_02 (Valdes et al. 2021)",
+  "source_age": 95.0,
+  "source_file": "095Ma_precip.nc",
+  "units": "0.01 mm/day"
+ },
+ "temp": {
+  "age_mismatch_myr": 0.0,
+  "area_mean": 26.559,
+  "max": 41.927,
+  "min": 1.536,
+  "nodata_filled": 0,
+  "override_reason": null,
+  "pole_cells_flattened": 2,
+  "provenance": "inferred",
+  "scale": 100,
+  "source": "Mean annual surface temperature, scotese02a_v21321 (Scotese 2022; Scotese et al. 2021)",
+  "source_age": 95.0,
+  "source_file": "095_temp_list.csv",
+  "units": "0.01 degC"
+ }
+}

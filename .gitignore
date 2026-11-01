@@ -1,0 +1,17 @@
+# raw downloads (large; re-fetch from the sources listed in pipeline/README.md)
+pipeline/raw/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Node / Vite (later)
+node_modules/
+dist/
+
+
+# screenshots from tests/browser
+shots/
+.DS_Store
