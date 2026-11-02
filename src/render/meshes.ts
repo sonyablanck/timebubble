@@ -86,6 +86,7 @@ export function buildTileMesh(t: TileData, frame: LocalFrame, material: THREE.Ma
   ring.forEach((src, r) => { lat[nv + r] = lat[src]!; lon[nv + r] = lon[src]!; h[nv + r] = h[src]! - skirt; });
 
   const pos = new Float32Array(total * 3), nor = new Float32Array(total * 3), col = new Float32Array(total * 3), prov = new Float32Array(total);
+  const flg = new Float32Array(total);   // provenance bits, terrain | biome (focus mode, coastline outline)
   const drawn = new Float32Array(nv);
   const jit = new Float32Array(nv);
   for (let k = 0; k < nv; k++) {
@@ -105,13 +106,16 @@ export function buildTileMesh(t: TileData, frame: LocalFrame, material: THREE.Ma
       h[k] = drawn[k]!;
       groundColour(drawn[k]!, nor[k * 3 + 1]!, jit[k]!, col, k * 3, t.biome?.colour, k * 3);
       // blending toward the data surface removes invented relief, so the level falls with it
-      prov[k] = provLevel(w >= 0.5 ? t.flags[k]! & ~F.GENERATED_COAST : t.flags[k]!, t.strength[k]! * (1 - w));
+      const tf = w >= 0.5 ? t.flags[k]! & ~(F.GENERATED_COAST | F.GENERATED_RELIEF) : t.flags[k]!;
+      prov[k] = provLevel(tf, t.strength[k]! * (1 - w));
+      flg[k] = tf | (t.biome?.flags[k] ?? 0);
     }
     ring.forEach((src, r) => {
       const k = nv + r;
       h[k] = drawn[src]! - skirt;
       for (let c = 0; c < 3; c++) col[k * 3 + c] = col[src * 3 + c]! * 0.8;
       prov[k] = prov[src]!;
+      flg[k] = flg[src]!;
     });
   };
 
@@ -135,6 +139,7 @@ export function buildTileMesh(t: TileData, frame: LocalFrame, material: THREE.Ma
   g.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
   g.setAttribute("color", new THREE.BufferAttribute(col, 3));
   g.setAttribute("aProv", new THREE.BufferAttribute(prov, 1));
+  g.setAttribute("aFlags", new THREE.BufferAttribute(flg, 1));
   g.setIndex(new THREE.BufferAttribute(idx, 1));
   const mesh = new THREE.Mesh(g, material);
   mesh.matrixAutoUpdate = false;
@@ -143,7 +148,7 @@ export function buildTileMesh(t: TileData, frame: LocalFrame, material: THREE.Ma
   const reproject = (frame: LocalFrame, morph?: (lat: number, lon: number) => number) => {
     shade(morph);
     for (let k = 0; k < total; k++) frame.project(lat[k]!, lon[k]!, h[k]!, pos, k * 3);
-    for (const a of ["position", "color", "aProv"]) g.getAttribute(a).needsUpdate = true;
+    for (const a of ["position", "color", "aProv", "aFlags"]) g.getAttribute(a).needsUpdate = true;
     g.computeBoundingSphere();
     g.computeBoundingBox();
   };
@@ -184,6 +189,7 @@ export function buildFarMesh(f: FarField, frame: LocalFrame, material: THREE.Mat
   g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   g.setAttribute("color", new THREE.BufferAttribute(col, 3));
   g.setAttribute("aProv", new THREE.BufferAttribute(prov, 1));
+  g.setAttribute("aFlags", new THREE.BufferAttribute(new Float32Array(nv).fill(F.DATA_SURFACE), 1));
   g.setAttribute("aLL", new THREE.BufferAttribute(ll, 2));
   g.setIndex(new THREE.Uint32BufferAttribute(idx, 1));
   const mesh = new THREE.Mesh(g, material);

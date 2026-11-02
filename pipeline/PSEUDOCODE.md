@@ -8,7 +8,7 @@ Conventions:
 - All coordinates are (lat, lon) in degrees, lon in [-180, 180).
 
 
-> **Status (2026-11-01):** steps 0–5 and the manifest half of 6 are coded, tested and run on the real data (PBDB download of 2026-11-01: 608,780 rows → 516,075 clean; every one fell inside a plate polygon). Real-data findings: PBDB writes `NO_ORDER_SPECIFIED`-style placeholders (read as empty); many dinosaurs are filed as class Reptilia with no order, so dinosaur detection uses every dinosaur family in `rules.csv` plus egg and track families; microfossils and algae get body plan `skip` (counted, not reviewed); 5.4% of occurrence-slices remain unmapped (no taxonomy, dinosaurs without a family, tracks, lycopsids, gnetophytes, liverworts: see `pipeline/review/unmapped_taxa.csv`). Ecology files are gzipped JSON (`ecology/{age}.json.gz`, 11 MB in all, from 204 MB plain). Terrestrial-environment fossils land on 1° DEM land 67–99% of the time, and on land or shelf above −200 m 88–99.7% (`pipeline/checks/fossil_land_check.py`), confirming the plate model choice (DESIGN A12). Settled while coding: the PBDB query uses `min_ma=62.5&max_ma=252.5&timerule=overlap&show=class,coords,env&vocab=pbdb&limit=all&datainfo` (parameter names confirmed against published PBDB download metadata); the `datainfo` header is parsed for the access time and licence. Intermediates are gzipped CSV/JSON rather than parquet (no extra dependency). PBDB's own download metadata has stated **CC0** since at least November 2025 (earlier CC BY 4.0); the pipeline records whatever the actual download says. Non-avian dinosaurs are recognised by Saurischia/Ornithischia and their subgroups at class, order or family level, birds (Aves) kept. `rules.csv` is a starter set; size hints stay blank until sourced.
+> **Status (2026-11-01):** steps 0–6 are coded (step 6 and §1d completed 2026-11-02: credits.json and climate_by_age.json), tested and run on the real data (PBDB download of 2026-11-01: 608,780 rows → 516,075 clean; every one fell inside a plate polygon). Real-data findings: PBDB writes `NO_ORDER_SPECIFIED`-style placeholders (read as empty); many dinosaurs are filed as class Reptilia with no order, so dinosaur detection uses every dinosaur family in `rules.csv` plus egg and track families; microfossils and algae get body plan `skip` (counted, not reviewed); 5.4% of occurrence-slices remain unmapped (no taxonomy, dinosaurs without a family, tracks, lycopsids, gnetophytes, liverworts: see `pipeline/review/unmapped_taxa.csv`). Ecology files are gzipped JSON (`ecology/{age}.json.gz`, 11 MB in all, from 204 MB plain). Terrestrial-environment fossils land on 1° DEM land 67–99% of the time, and on land or shelf above −200 m 88–99.7% (`pipeline/checks/fossil_land_check.py`), confirming the plate model choice (DESIGN A12). Settled while coding: the PBDB query uses `min_ma=62.5&max_ma=252.5&timerule=overlap&show=class,coords,env&vocab=pbdb&limit=all&datainfo` (parameter names confirmed against published PBDB download metadata); the `datainfo` header is parsed for the access time and licence. Intermediates are gzipped CSV/JSON rather than parquet (no extra dependency). PBDB's own download metadata has stated **CC0** since at least November 2025 (earlier CC BY 4.0); the pipeline records whatever the actual download says. Non-avian dinosaurs are recognised by Saurischia/Ornithischia and their subgroups at class, order or family level, birds (Aves) kept. `rules.csv` is a starter set; size hints stay blank until sourced.
 ---
 
 ## 0. config.py
@@ -143,7 +143,7 @@ for var in (temp, precip):
 #        2024 DEMs, per slice (the model ran on the Valdes et al. 2021 geography)
 ```
 
-## 1d. climate_by_age.json (hand-curated, copied as-is)
+## 1d. climate_by_age.json — coded (`curate_climate.py`)
 
 ```
 per slice: {
@@ -163,7 +163,9 @@ per slice: {
 validated against a schema: every numeric field must have a ref
 ```
 
-`gmst_judd`: the PhanDA time series is on GitHub (Judd et al., 2024). `# CHECK:` the repository licence before copying values; if it isn't open, store only the values with a citation, which is how a scientific fact is normally reused.
+`gmst_judd`: the PhanDA time series is on GitHub (Judd et al., 2024). The repository has no licence file (checked 2026-11-02), so only the per-stage percentile values are stored, with the citation, which is how a scientific fact is normally reused.
+
+**As coded (2026-11-02):** `python -m pipeline.curate_climate --phanda <PhanDA_GMSTandCO2_percentiles.csv> --data <out>` writes 38 slices. `gmst_scotese` is the area-weighted mean of the temperature grid the slice uses (from its sidecar), with the grid's age; `gmst_judd` holds p5, p16, p50, p84 and p95 for the stage containing the slice (half-open stage ranges). `build_manifest.py` copies the file into the output and refuses to build if any numeric field lacks a reference that resolves in `REFERENCES.md`. Tests: `pipeline/tests/test_climate_params.py`.
 
 ---
 
@@ -312,7 +314,7 @@ for age in slices():
 
 ---
 
-## 6. build_manifest.py — manifest coded; CREDITS still to do
+## 6. build_manifest.py — coded (manifest, credits.json, climate parameters)
 
 ```
 manifest = {

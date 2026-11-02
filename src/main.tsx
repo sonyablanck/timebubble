@@ -5,6 +5,7 @@ import { WalkRenderer } from "./render/walk";
 import { TerrainClient } from "./terrain/client";
 import { App } from "./ui/App";
 import { viewFromUrl } from "./ui/url";
+import { loadSettings } from "./ui/settings";
 import "./styles.css";
 
 // Entry point: the globe screen, and walk mode (terrain/ + render/) created on first use.
@@ -21,7 +22,7 @@ async function start(): Promise<void> {
   }
 
   const url = viewFromUrl(location.search);
-  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  const reducedMotion = loadSettings().reducedMotion;   // ui §4: stored preference, defaulting to the OS setting
   const store = new DataStore();
   const globe = new Globe();
   const debug: Record<string, unknown> = { globe, store };
@@ -59,7 +60,7 @@ async function start(): Promise<void> {
   }
   if (url.pin) globe.pin(url.pin.lat, url.pin.lon);
   root.textContent = "";                       // clear the loading message
-  render(<App globe={globe} store={store} getWalk={getWalk} />, root);
+  render(<App globe={globe} store={store} getWalk={getWalk} initialWalk={url.walk} />, root);
   document.body.classList.add("ready");
 }
 

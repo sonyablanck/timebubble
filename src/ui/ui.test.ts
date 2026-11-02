@@ -27,4 +27,17 @@ describe("readout formatting", () => {
     expect(formatCoast(-301)).toBe("301 km offshore");
     expect(formatPrecip(1227.4)).toBe("1,227 mm/yr");
   });
+
+  it("INVARIANT: the walk view round-trips through the URL (provenance §5)", () => {
+    const v: GlobeViewState = {
+      age: 65, camera: { lat: 10, lon: 20, dist: 3.2 }, layers: ["relief"], exaggeration: 40,
+      walk: { lat: 54.9012, lon: -80.3004, headingDeg: 284, pitchDeg: -3, fly: true, altitudeM: 310, overlay: "focus", focus: "DENSITY_BOOSTED",
+        aftermath: { phase: "impactWinter", year: 2 }, representativeFauna: false },
+    };
+    expect(viewFromUrl(viewToUrl(v))).toEqual(v);
+    const walking: GlobeViewState = { ...v, walk: { lat: 1, lon: 2, headingDeg: 0, pitchDeg: 0, fly: false, overlay: "off", aftermath: null, representativeFauna: true } };
+    expect(viewFromUrl(viewToUrl(walking))).toEqual(walking);
+    expect(viewFromUrl("?walk=95,10").walk).toBeUndefined();
+  });
 });
+

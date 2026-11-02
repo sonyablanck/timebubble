@@ -86,12 +86,14 @@ export interface ClimateMeta {
   precip: ClimateVarMeta;
 }
 
-/** One slice's entry in climate_by_age.json (pipeline §1d). Loose until curated. */
+/** One slice's entry in climate_by_age.json (pipeline §1d; built by pipeline/curate_climate.py). */
 export interface ClimateParams {
   age: number;
   ice_possible?: boolean;
-  gmst_scotese?: number;
-  gmst_judd?: number;
+  /** Area-weighted mean of the temperature grid this slice uses (Scotese 2022 dataset). */
+  gmst_scotese?: { c: number; grid_age_ma: number; note: string; ref: string };
+  /** PhanDA GMST percentiles for the stage containing the slice (Judd et al. 2024). */
+  gmst_judd?: { stage: string; stage_ma: [number, number]; p5: number; p16: number; p50: number; p84: number; p95: number; ref: string };
   aftermath?: unknown;
   refs?: string[];
   [key: string]: unknown;
@@ -119,3 +121,13 @@ export interface OccurrenceNear extends Occurrence {
 }
 
 export type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
+
+/** credits.json (pipeline §6, written by build_manifest): what the About panel shows. */
+export interface Credits {
+  datasets: { name: string; version: string | null; doi: string | null; licence: string; ref: string; used_for: string; changes: string }[];
+  papers: string[];
+  hand_entered: { what: string; ref: string }[];
+  software: { name: string; licence: string }[];
+  pbdb: { retrieved_utc?: string; data_license?: string; url?: string; access_time?: string } | null;
+  references: Record<string, string>;
+}

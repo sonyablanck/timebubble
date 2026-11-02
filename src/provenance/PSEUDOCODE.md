@@ -4,7 +4,7 @@ Implements DESIGN.md §2 rule 2: every feature carries a source tag, and the pla
 
 Conventions as in `pipeline/PSEUDOCODE.md`: `# INVARIANT:` lines become tests, `# CHECK:` lines are facts to verify first.
 
-> **Status: partly coded.** `flags.ts` (§1 registry with plain-language `FLAG_INFO`, §2 `levelOf`) is coded and tested. The §3 overlay exists for terrain in walk mode (Source mode only, toggled with P: level colour at α 0.55 plus dots/hatching, uniform-only toggle) with its legend; terrain, sea and sky info cards (§4) show the source cell, local height, smooth surface, generated detail and flags. Not yet: focus and evidence modes, the coastline outline, "in view" shares, reports and cite-this-view (§5).
+> **Status: coded.** `flags.ts` (§1 registry with plain-language `FLAG_INFO`, §2 `levelOf`), the §3 overlay in walk mode with all three modes (source, focus, evidence; P toggles, Shift+P cycles), the invented-coastline outline, the legend with in-view shares, info cards (§4) for terrain, sea, sky, plants and animals, and §5: the provenance report (JSON and CSV), "cite this view" (R) and a link that reopens the walk view. Terrain levels were calibrated on 2026-11-02. Amendments from coding are at the end.
 
 ---
 
@@ -240,3 +240,15 @@ export function viewToUrl(view) / viewFromUrl(url)
 # CHECK: overlay colours and patterns stay distinguishable under protanopia,
 #        deuteranopia and tritanopia simulation (manual check with a simulator)
 ```
+
+---
+
+## Amendments from coding (2026-11-02)
+
+- **§2 terrain calibration:** `strength` = max(|generated| / local amplitude, |generated| / 80 m) (`terrain/surface.ts` `provStrength`), so ≥ 20 m of invented relief is at least `inferred` and ≥ 60 m `generated`, whatever the amplitude. Before, orogens (amplitude 600 m) let ~150 m of invented relief read as `data`. At a 150 Ma mountain tile (14.1°S 41.2°W) the ground now reads ≈ 55–78% generated; Hell Creek lowland stays ≈ 99% data.
+- **§3 modes:** one `u_overlay` uniform (0 off, 1 source, 2 focus, 3 evidence, 4 the hidden shares pass), shared by terrain, far ring, plants, cut-outs, animals and sea. Flags reach the shader as a float attribute (`aFlags`; exact below 2²⁴) per terrain vertex (terrain | biome bits) and per plant and animal instance; a bit test picks the focused flag. Focus offers 13 flags (always-on flags such as COLOUR_GENERATED are left out: they would light up everything); everything without the flag is greyed. Evidence mode colours terrain by the distance from each fragment to the nearest of up to 128 fossil sites near the player (from each tile's ecology, merged within ~5 km): ≤ 25 km data colour, 150 km inferred, beyond generated, with the same patterns; plants and animals are greyed; the legend gives the nearest site's distance.
+- **§3b coastline outline:** a pale line where GENERATED_COAST starts or stops (an iso-line of the interpolated bit), in source and focus modes.
+- **§3c in-view shares:** instead of 64 × 64 rays on a worker, every 0.5 s the view is redrawn into a 96 × 54 target with each surface's level as a flat colour (sky removed, the marker hidden, shadows not re-rendered) and the pixels are counted. This is the area share of everything visible, including plants and animals; the sea surface is skipped, so sea counts by its floor (whether a spot is sea is data; the look of the water is generated).
+- **§5 report:** `report.ts` builds it from the view, the manifest (data version, plate model, PBDB retrieval date, licence and query), the slice's climate sidecar, the current tile's roster (each taxon's level, flags, occurrence and reference IDs, age ranges, size and its source, density, presence, expected and drawn counts), the plant mix, the in-view shares and the references used, resolved from `REFERENCES.md`. JSON for the whole report, CSV for the taxa. No timestamps, so the same view and data version give byte-identical files.
+- **§5 link:** the URL carries the walk view: `walk=lat,lon`, `look=heading,pitch`, `fly=altitude` when flying, `ov=source|focus:FLAG|evidence`, `af=iw:year|fs` for the Aftermath, `rf=0` with representative fauna off. Opening such a link goes straight into walk mode. The cite dialog moved from C (which flies down) to **R**.
+

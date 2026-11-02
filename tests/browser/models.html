@@ -1,0 +1,16 @@
+<!doctype html>
+<!-- Dev-only model sheet: every animal and plant body plan side by side (npm run dev, then open /tests/browser/models.html). -->
+<html><body style="margin:0;background:#cfd8dc"><script type="module">
+import * as THREE from "three";
+import { animalGeometry, plantGeometry } from "/src/render/organisms/models.ts";
+import { ANIMAL_PLANS } from "/src/ecology/roster.ts";
+import { PLANT_PLANS } from "/src/biome/plants.ts";
+const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(1400, 700); document.body.appendChild(r.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color("#cfd8dc");
+scene.add(new THREE.HemisphereLight("#ffffff", "#665544", 1.6)); const sun = new THREE.DirectionalLight("#fff", 2); sun.position.set(3, 5, 4); scene.add(sun);
+const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true });
+ANIMAL_PLANS.forEach((p, i) => { const m = new THREE.Mesh(animalGeometry(p), mat); m.rotation.y = Math.PI / 2 + 0.5; m.position.set((i % 7) * 1.2 - 3.6, Math.floor(i / 7) * -0.9 + 1.2, 0); scene.add(m); });
+[...PLANT_PLANS, "snag"].forEach((p, i) => { const m = new THREE.Mesh(plantGeometry(p), mat); m.position.set(i * 1.0 - 3.5, -1.9, 0); scene.add(m); });
+const cam = new THREE.PerspectiveCamera(35, 2, 0.1, 100); cam.position.set(0, 0.6, 8.2); cam.lookAt(0, -0.2, 0);
+r.render(scene, cam); document.body.dataset.done = "1";
+</script></body></html>

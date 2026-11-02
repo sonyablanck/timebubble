@@ -69,6 +69,28 @@ export function densityPerKm2(massKg: number, trophic: Trophic): number {
   return K_CARNIVORE * TROPHIC_FACTOR[trophic] * massKg ** -0.75;
 }
 
+/**
+ * Evidence weight at which presence reaches 1 − 1/e ≈ 63%. Weight sums, over a taxon's occurrences,
+ * age fit × exp(−distance / 250 km) × environment match (§1–§2): one well-dated occurrence on the
+ * spot in the right environment gives weight 1. Provisional (CHECK in DESIGN §12): a stated reading
+ * of the evidence, not a fitted probability.
+ */
+export const PRESENCE_SCALE = 1;
+
+export function presenceFromWeight(weight: number): number {
+  return 1 - Math.exp(-Math.max(0, weight) / PRESENCE_SCALE);
+}
+
+/** Presence as a percentage, never shown as a certain 100% or 0%. */
+export function presencePct(p: number): string {
+  return p > 0.99 ? "> 99%" : p < 0.01 ? "< 1%" : `${Math.round(p * 100)}%`;
+}
+
+/** Plain-language presence for cards and the field guide. */
+export function presenceLabel(p: number): string {
+  return p >= 0.9 ? "very likely" : p >= 0.6 ? "likely" : p >= 0.3 ? "possible" : "uncertain";
+}
+
 // ------------------------------------------------------------------ §1a environments
 
 export type EnvClass = "terrestrial" | "marginal" | "shallow" | "deep" | "marine" | "unknown";
@@ -123,7 +145,8 @@ export interface TaxonEntry {
   weight: number;            // evidence weight (presence only)
   source: "data" | "inferred";
   evidence: { occurrenceIds: number[]; refIds: number[]; count: number; nearestKm: number; ageRanges: [number, number][]; straddlesKpg: boolean; matchedLevel: string };
-  realisticPerKm2: number;   // Damuth density for this taxon's share of its trophic level
+  realisticPerKm2: number;   // Damuth density for one species of this mass where it lives (per km²)
+  presence: number;          // 0–1: provisional chance it lived on this spot at this time, from the evidence (§3)
   expected: number;          // expected individuals on this tile
   count: number;             // individuals placed on this tile (0 for unrendered plans)
   flags: number;
@@ -183,7 +206,7 @@ export function buildRoster(occ: readonly OccurrenceNear[], o: RosterOptions): T
         massKg: x.size_hint ? info.massKg * (x.size_hint / info.lengthM) ** 3 : info.massKg,
         weight: 0, source: "inferred",
         evidence: { occurrenceIds: [], refIds: [], count: 0, nearestKm: Infinity, ageRanges: [], straddlesKpg: false, matchedLevel: x.matched_level },
-        realisticPerKm2: 0, expected: 0, count: 0, flags: 0, note: null,
+        realisticPerKm2: 0, presence: 0, expected: 0, count: 0, flags: 0, note: null,
       };
       entries.set(t.key, e);
     }
@@ -210,14 +233,17 @@ export function buildRoster(occ: readonly OccurrenceNear[], o: RosterOptions): T
   const genusPlans = new Set(roster.filter((e) => e.rank === "genus").map((e) => e.bodyPlan));
   const listedOnly = new Set(roster.filter((e) => e.rank !== "genus" && genusPlans.has(e.bodyPlan)).map((e) => e.key));
 
-  // §3: split each trophic level's density budget among its co-occurring taxa, by evidence weight
-  const trophicWeight: Record<Trophic, number> = { carnivore: 0, omnivore: 0, herbivore: 0 };
-  for (const e of roster) trophicWeight[PLAN_INFO[e.bodyPlan].trophic] += e.weight;
+  // §3: Damuth's law is a per-species relation (Damuth 1981; applied to one species, T. rex, by
+  // Marshall et al. 2021), so each taxon gets the full density for its mass where it lives. Whether
+  // it lived on this spot at this moment is a separate question, answered (provisionally) by the
+  // evidence: presence = 1 − exp(−weight / PRESENCE_SCALE). Until 2026-11-02 the density was split
+  // among all taxa of a trophic level by evidence share, which made weakly evidenced taxa look
+  // thousands of times rarer than Damuth's law gives.
   for (const e of roster) {
     const info = PLAN_INFO[e.bodyPlan];
-    const share = e.weight / trophicWeight[info.trophic];
-    e.realisticPerKm2 = densityPerKm2(e.massKg, info.trophic) * share;
-    let expected = e.realisticPerKm2 * TILE_AREA_KM2 * realmFraction(info.realm, o.habitats) * (1 - 0.9 * o.heatStress);
+    e.realisticPerKm2 = densityPerKm2(e.massKg, info.trophic);
+    e.presence = presenceFromWeight(e.weight);
+    let expected = e.realisticPerKm2 * e.presence * TILE_AREA_KM2 * realmFraction(info.realm, o.habitats) * (1 - 0.9 * o.heatStress);
     if (o.aftermath) expected *= SURVIVORS.has(e.bodyPlan) ? (o.aftermath === "impactWinter" ? 0.2 : 0.5) : 0;
     e.expected = expected;
     e.flags = (e.source === "data" ? F.TAXON_FROM_DATA : F.TAXON_INFERRED) | F.COLOUR_GENERATED
@@ -229,7 +255,7 @@ export function buildRoster(occ: readonly OccurrenceNear[], o: RosterOptions): T
     if (n === 0 && o.representativeFauna && e.source === "data" && !o.aftermath && realmFraction(info.realm, o.habitats) > 0.05) {
       n = info.group[0];
       e.flags |= F.DENSITY_BOOSTED;
-      e.note = "Shown for illustration (see the realistic density).";
+      e.note = "Shown for illustration: at realistic density and presence, none would be expected on this tile.";
     }
     e.count = n;
   }

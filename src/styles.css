@@ -140,3 +140,58 @@ button:focus-visible, input:focus-visible { outline: 3px solid #7fb7ff; outline-
 
 .card-links { margin: 8px 0 0; }
 .card-links a { color: #9ecbff; }
+
+/* field guide "Locate" (ui/ §3) */
+.locate-chip { position: absolute; top: 104px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
+  padding: 6px 10px; font-size: 13px; max-width: 520px; white-space: nowrap; }
+.locate-arrow { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center; font-size: 18px; font-weight: 700;
+  color: #1a1a1a; background: #ffd166; border-radius: 50%; transition: transform 0.15s linear; }
+button.small { padding: 2px 8px; font-size: 12px; min-height: 0; }
+.locate-btn { margin-left: 6px; }
+.plant-list { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.plant-list li { display: flex; align-items: center; gap: 6px; }
+
+/* provenance legend modes (provenance §3) */
+.seg { display: flex; gap: 2px; margin: 4px 0 8px; }
+.seg button { flex: 1; padding: 3px 6px; font-size: 12px; min-height: 0; background: #0b0e14; color: var(--muted); border: 1px solid var(--panel-border); }
+.seg button.on { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 600; }
+.sw-focus { background: #D55E00; background-image: repeating-linear-gradient(-45deg, transparent 0 3px, rgba(0,0,0,0.35) 3px 4px); }
+.focus-pick { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; font-size: 12px; }
+.focus-pick select { flex: 1; }
+.shares { font-size: 12px; margin: 6px 0 2px; }
+
+/* cite this view (provenance §5) */
+.cite-dialog { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 520px; max-width: calc(100% - 40px); font-size: 13px; z-index: 5; }
+.cite-dialog textarea { width: 100%; box-sizing: border-box; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; background: #0b0e14; color: var(--text);
+  border: 1px solid var(--panel-border); border-radius: 4px; padding: 8px; resize: vertical; }
+.walk-status .buttons { flex-wrap: wrap; }
+.walk-status .buttons button { white-space: nowrap; padding-left: 10px; padding-right: 10px; }
+
+/* ui §1a, §4, §5, §7: panels (intro, about, help, settings) */
+:root { --ui-scale: 1; }
+.hud, .modal-backdrop, .top-buttons { zoom: var(--ui-scale); }
+.top-buttons { position: absolute; top: var(--gap); right: var(--gap); display: flex; gap: 6px; z-index: 4; pointer-events: auto; }
+body.walking .top-buttons { top: auto; bottom: calc(var(--gap) + 2px); right: 50%; transform: translateX(50%); }
+.modal-backdrop { position: fixed; inset: 0; pointer-events: auto; background: rgba(5, 8, 12, 0.55); display: flex; align-items: center; justify-content: center; z-index: 10; }
+.panel.modal { position: relative; max-width: min(560px, calc(100vw - 40px)); max-height: calc(100vh - 60px); overflow: auto; font-size: 13px; }
+.panel.modal.wide { max-width: min(860px, calc(100vw - 40px)); }
+.panel.modal h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 14px 0 4px; }
+.intro h1 { font-size: 28px; margin: 0 0 4px; }
+.intro .lead { font-size: 15px; margin: 0 0 12px; }
+.intro-steps { padding-left: 20px; line-height: 1.5; }
+.intro-steps li { margin-bottom: 6px; }
+.intro-backdrop { background: rgba(5, 8, 12, 0.35); }
+kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; background: #0b0e14; border: 1px solid var(--panel-border); border-radius: 3px; padding: 1px 4px; white-space: nowrap; }
+.about p { line-height: 1.5; }
+ul.credits { margin: 4px 0; padding-left: 18px; line-height: 1.45; }
+ul.credits li { margin-bottom: 6px; }
+.ref { color: var(--muted); font-size: 12px; }
+.help-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.help-cols dl.compact dt { white-space: nowrap; }
+.settings label.row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.settings label.row select, .settings label.row input[type=range] { flex: 1; }
+.settings label.check { display: block; margin: 6px 0; line-height: 1.4; }
+
+/* photo mode (ui §6b): only the small bar shows, and it is left out of the saved image */
+body.photo-mode .top-buttons { display: none; }
+.photo-hud .photo-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; padding: 6px 12px; pointer-events: auto; opacity: 0.85; }

@@ -252,3 +252,21 @@ describe("terrain service and client (inline mode)", () => {
     expect(again.heights).toEqual(t.heights);
   });
 });
+
+describe("terrain provenance calibration (DESIGN §12, 2026-11-02)", () => {
+  it("invented relief reads inferred from 20 m and generated from 60 m, however large the local amplitude", async () => {
+    const { provStrength } = await import("./surface");
+    const { levelOf, Level } = await import("../provenance/flags");
+    const lvl = (g: number, amp: number) => levelOf("terrain", 0, provStrength(g, amp));
+    // orogen: amplitude 600 m
+    expect(lvl(10, 600)).toBe(Level.DATA);
+    expect(lvl(25, 600)).toBe(Level.INFERRED);
+    expect(lvl(150, 600)).toBe(Level.GENERATED);    // read as data before the floor
+    // lowland: amplitude 30 m; the relative term still bites first
+    expect(lvl(5, 30)).toBe(Level.DATA);
+    expect(lvl(10, 30)).toBe(Level.INFERRED);
+    expect(lvl(-25, 30)).toBe(Level.GENERATED);
+    expect(provStrength(1e4, 1)).toBe(1);
+  });
+});
+

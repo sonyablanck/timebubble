@@ -1,5 +1,6 @@
 # Publishes the app to GitHub Pages on every push to main.
 # One-time setup: repo Settings → Pages → Source: "GitHub Actions".
+# Action majors checked Nov 2026: all run on Node 24 (the Node 20 runtime is deprecated on GitHub runners).
 name: Deploy to GitHub Pages
 on:
   push:
@@ -16,16 +17,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
   deploy:
@@ -36,4 +37,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

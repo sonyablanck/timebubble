@@ -8,7 +8,7 @@ import { TerrainService } from "../terrain/service";
 import type { TileData } from "../terrain/tile";
 import { tileBounds, tileIdFor } from "../terrain/tilegrid";
 import { makeAgent, step } from "./behaviour";
-import { buildRoster, densityPerKm2, envClass, PLAN_INFO, type Habitats } from "./roster";
+import { buildRoster, densityPerKm2, envClass, PLAN_INFO, presenceFromWeight, TILE_AREA_KM2, type Habitats } from "./roster";
 import { forEachCell, habitatScore, makeSampler } from "./scatter";
 
 const H: Habitats = { land: 0.9, nearCoast: 0.1, shelf: 0.1, ocean: 0 };
@@ -25,6 +25,33 @@ describe("roster and abundance (ecology §1–§3)", () => {
   it("BENCHMARK: a ~5,200 kg carnivore has ~0.01 individuals per km² (Marshall et al. 2021)", () => {
     expect(densityPerKm2(5200, "carnivore")).toBeCloseTo(0.01, 6);
     expect(densityPerKm2(15000, "herbivore")).toBeGreaterThan(densityPerKm2(15000, "carnivore"));
+  });
+
+  it("INVARIANT: a taxon's density is Damuth's per-species value, whatever else lives nearby (fixed 2026-11-02)", () => {
+    const alone = buildRoster([occ("Furcatoceratops elucidans", "ceratopsian", 92)], opts());
+    const crowd = buildRoster([occ("Furcatoceratops elucidans", "ceratopsian", 92),
+      ...Array.from({ length: 60 }, (_, i) => occ(`Herbivore${i} sp`, "ornithopod", 10 + i))], opts());
+    const a = alone.find((e) => e.name === "Furcatoceratops")!, c = crowd.find((e) => e.name === "Furcatoceratops")!;
+    expect(c.realisticPerKm2).toBeCloseTo(a.realisticPerKm2, 12);
+    expect(a.realisticPerKm2).toBeCloseTo(densityPerKm2(a.massKg, "herbivore"), 12);
+    // a 4,000 kg herbivore: about 1 per 8 km², not 1 per 56,000 km² as the old evidence-share split gave
+    expect(1 / a.realisticPerKm2).toBeGreaterThan(5);
+    expect(1 / a.realisticPerKm2).toBeLessThan(12);
+  });
+
+  it("presence comes from the evidence: nearer, better-dated and more occurrences raise it; it never exceeds 1", () => {
+    expect(presenceFromWeight(1)).toBeCloseTo(1 - Math.exp(-1), 12);
+    expect(presenceFromWeight(0)).toBe(0);
+    expect(presenceFromWeight(50)).toBeLessThanOrEqual(1);
+    const near = buildRoster([occ("Edmontosaurus annectens", "ornithopod", 5)], opts())[0]!;
+    const far = buildRoster([occ("Edmontosaurus annectens", "ornithopod", 140)], opts())[0]!;
+    const many = buildRoster(Array.from({ length: 6 }, () => occ("Edmontosaurus annectens", "ornithopod", 140)), opts())[0]!;
+    const poorlyDated = buildRoster([occ("Edmontosaurus annectens", "ornithopod", 5, { age_fit: 0.3 })], opts())[0]!;
+    expect(near.presence).toBeGreaterThan(far.presence);
+    expect(many.presence).toBeGreaterThan(far.presence);
+    expect(poorlyDated.presence).toBeLessThan(near.presence);
+    // expected count on the tile = density × presence × area × habitat
+    expect(near.expected).toBeCloseTo(near.realisticPerKm2 * near.presence * TILE_AREA_KM2 * 0.9, 9);
   });
 
   it("maps PBDB's environment vocabulary", () => {

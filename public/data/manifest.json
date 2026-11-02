@@ -1,5 +1,7 @@
 {
- "data_version": "fcde077f2a8386c9",
+ "climate_params": "climate_by_age.json",
+ "credits": "credits.json",
+ "data_version": "00aa0797087e7bba",
  "dem_source": "PALEOMAP PaleoDEMs (Scotese et al. 2024, v24221)",
  "kpg_ma": 66.0,
  "pbdb": {

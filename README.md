@@ -12,7 +12,7 @@ The world is honest about what it knows. Everything carries a provenance tag:
 
 Press **P** in-app to see the overlay. Any view can be exported as a provenance report with a citation and a link that reopens it.
 
-> **Status: early implementation.** Coded and tested on the real datasets: the pipeline's elevation, continentality, climate and manifest steps; the app's data loader; **the globe**, with its time slider, climate layers and picking; and **a first walk mode**: seamless generated terrain that keeps each 0.1° cell's mean, walking and flight, the horizon drawn from the DEM, sea, sky, the provenance overlay (P) and click-to-inspect; **biomes** from the modelled climate, including the 65 Ma Impact Winter and Fern Spike; and **fossils**: about 890,000 Paleobiology Database occurrences rotated to their slices, on the globe and in the plant mix. An **ecology** step decides which taxa live on each tile and how many (Damuth's law), and places plants and animal groups; the field guide (G) lists them with their evidence. **Plants and animals are drawn** in walk mode as generic low-poly body-plan models (animals move, but are not yet animated); click one to see its fossil evidence.
+> **Status: early implementation.** Coded and tested on the real datasets: the pipeline's elevation, continentality, climate and manifest steps; the app's data loader; **the globe**, with its time slider, climate layers and picking; and **a first walk mode**: seamless generated terrain that keeps each 0.1° cell's mean, walking and flight, the horizon drawn from the DEM, sea, sky, the provenance overlay (P) and click-to-inspect; **biomes** from the modelled climate, including the 65 Ma Impact Winter and Fern Spike; and **fossils**: about 890,000 Paleobiology Database occurrences rotated to their slices, on the globe and in the plant mix. An **ecology** step decides which taxa live on each tile and how many (Damuth's law), and places plants and animal groups; the field guide (G) lists them with their evidence and can point you to the nearest one (Locate). The **provenance overlay** (P, Shift+P for focus and evidence modes) shows what is data, inferred or generated, with in-view shares; **R** gives a citation, a link that reopens the view, and a downloadable provenance report. **Plants and animals are drawn** in walk mode as generic body-plan models, with several shapes per plant type, walking and grazing animals, and sun shadows (L turns them off on slower computers); click one to see its fossil evidence. The sea is tinted by depth with foam at the shore, hot climates get a heat haze, and **K** saves a captioned screenshot. An intro, Help (**H**), Settings and an About & credits panel are on every screen.
 
 ## Try it
 
@@ -95,12 +95,12 @@ In the pseudocode, `# INVARIANT:` lines become automated tests, and `# CHECK:` l
 
 ## Roadmap
 
-1. **Pipeline:** download the datasets, resolve the `CHECK` items, produce `/public/data`. *(elevation, climate, fossils, manifest: done; credits and climate parameters: to do)*
+1. **Pipeline:** download the datasets, resolve the `CHECK` items, produce `/public/data`. *(elevation, climate, fossils, manifest, credits and climate parameters: done)*
 2. **Globe:** time slider, layers, picking. *(done)*
 3. **Terrain and walk mode:** streaming tiles, walk and flight, overlay, inspect. *(first version done)*
-4. **Biome and ecology:** biomes, ecology and drawing plants and animals *(done; animation, plant LODs and the field guide's Locate button still to come)*.
-5. **Provenance overlay and reports.**
-6. **Polish:** render presets, photo mode, UI, accessibility.
+4. **Biome and ecology:** biomes, ecology and drawing plants and animals *(done, including the field guide's Locate button)*.
+5. **Provenance overlay and reports:** source, focus and evidence overlays, in-view shares, invented-coastline outline, provenance report, cite this view, links that reopen a view. *(done)*
+6. **Polish:** intro, help, settings, About & credits, depth-tinted sea with shoreline foam, heat haze, photo mode (K). *(done; a full accessibility audit is still to do)*
 
 Deferred to v2: modern coastlines on the globe, "where was my town?", rivers and erosion, seasons, a temperature-scenario toggle, Palaeozoic and Cenozoic slices, animal behaviour.
 
@@ -112,6 +112,7 @@ Time Bubble stands on openly licensed science:
 
 - Scotese, C.R. et al. (2024) PALEOMAP PaleoDEMs and Global Plate Model v19o_r1d, supplementary material to *The Cretaceous World*. doi:10.5281/zenodo.10659112. CC BY 4.0.
 - Scotese, C.R. (2022) *Global Mean Surface Temperatures for 100 Phanerozoic Time Intervals*. doi:10.5281/zenodo.5718392. CC BY 4.0. Based on Scotese et al. (2021) and Valdes, Scotese and Lunt (2021).
+- Judd, E.J. et al. (2024) PhanDA global mean surface temperatures, *Science* 385, eadk3705 (stage values only, shown beside the climate grid's own global mean).
 - The Paleobiology Database, https://paleobiodb.org (CC0 since 2025; credited regardless).
 
 Full references, including the climate and ecology literature behind the model, are in [`REFERENCES.md`](REFERENCES.md).

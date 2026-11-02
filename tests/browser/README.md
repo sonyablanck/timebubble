@@ -28,3 +28,19 @@ node tests/browser/walk_browser.mjs http://localhost:5173/ shots
 ## Field guide
 
 `field_guide_browser.mjs` walks in at Hell Creek (70 Ma), opens the field guide (G), checks the roster and links, and turns representative fauna off (no density-boosted badges should remain).
+
+## Locate
+
+`locate_browser.mjs` (Hell Creek, 70 Ma) opens the field guide, locates a drawn dinosaur, checks the HUD chip (name, distance, "ahead" when facing the bearing), walks towards it and sees the distance fall, uses "Take me there" (ends within 40 m, facing it, on the ground), stops, locates a plant type, and checks that a taxon with nothing drawn reports so without leaving a marker. Result on 2026-11-02: all 15 checks pass, no console errors.
+
+## Models
+
+`models.html` (open it from the dev server: `/tests/browser/models.html`) draws every animal body plan and the first variant of each plant plan side by side, for eyeballing proportions.
+
+## Provenance
+
+`provenance_browser.mjs` (Hell Creek, 70 Ma) turns the overlay on (in-view shares sum to 100%), steps through focus (picks a flag) and evidence (nearest fossil site), checks that the URL follows the walk view, opens "cite this view" (R), downloads the JSON and CSV reports and checks their contents, then opens the link in a new tab and checks it lands in walk mode at the same place, heading and overlay. Result on 2026-11-02: all 18 checks pass, no console errors.
+
+## Panels, sea and photo mode
+
+`node tests/browser/panels_sea_browser.mjs [url] [outDir]` checks the intro (first visit only), H for help and Esc to close, the About panel's datasets, papers and maintainer, that settings persist across a reload and apply in walk mode, the terrain card's global-mean line at Hell Creek (70 Ma), the sea-floor depth texture at the Western Interior Seaway shore, the heat-haze level, and photo mode (K hides the HUD; Save writes a PNG with a caption strip). Screenshots `sea-*.png` show the shore.

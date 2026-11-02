@@ -4,7 +4,7 @@ Implements DESIGN.md §8 (ecology half): which organisms appear on a tile, how m
 
 Conventions as in `pipeline/PSEUDOCODE.md`: `# INVARIANT:` lines become tests, `# CHECK:` lines are facts to verify first. Numeric values are starting points to tune unless cited.
 
-> **Status: coded** (`src/ecology/`, see its README) and run on the real PBDB data, with a field guide panel (G) in walk mode. Plants and animals are placed but not drawn yet (render §7–§8). The §1a `CHECK` is resolved (74 PBDB environment strings mapped). Amendments from coding are at the end.
+> **Status: coded** (`src/ecology/`, see its README) and run on the real PBDB data, with a field guide panel (G, with Locate) in walk mode. Plants and animals are drawn (render §7–§8). §3 abundance was corrected on 2026-11-02 (per-species density plus a presence estimate; see the amendments). The §1a `CHECK` is resolved (74 PBDB environment strings mapped). Amendments from coding are at the end.
 
 ---
 
@@ -147,10 +147,13 @@ densityPerKm2(entry) =
     # CHECK: calibrate the herbivore k against Damuth (1981) mammal regressions,
     #        then adjust for endothermy assumptions; record the choice in About
 
-share(entry) = entry.weight / Σ weights of taxa sharing its trophic level
-               # splits the trophic level's density budget among co-occurring taxa
+presence(entry) = 1 − exp(−entry.weight / PRESENCE_SCALE)     # PRESENCE_SCALE = 1
+                # chance the taxon lived on this spot at this moment, from its evidence
+                # (age fit × distance kernel × environment match, summed over occurrences)
+                # CHECK: provisional reading of the evidence, not a fitted probability
+                # (amended 2026-11-02; this replaced share = weight / Σ trophic weights)
 
-expectedCount = densityPerKm2 * share * tileAreaKm2 * habitatFraction
+expectedCount = densityPerKm2 * presence * tileAreaKm2 * habitatFraction
                 * (1 − 0.9 * heatStress)           # biome §2b, Early Triassic tropics
 count = poisson(expectedCount, rng(slice, tile, taxon))
 ```
@@ -165,7 +168,7 @@ if settings.representativeFauna and entry.source == "data" and count == 0:
     flags |= DENSITY_BOOSTED
 ```
 
-The info card states plainly: "Shown for illustration; realistic density ≈ 1 per {X} km²." Turning the setting off gives the realistic picture.
+The info card states plainly that the animal is shown for illustration, next to its density where it lived, its presence here and the expected number on the tile. Turning the setting off gives the realistic picture.
 
 ---
 
@@ -306,3 +309,6 @@ The tile also gets a **field guide** panel listing the whole roster, so taxa pre
 - **§4 animals:** the budget goes to the largest animals first, at most 12 per taxon, so small mammals don't crowd out everything else.
 - **§5 K–Pg:** besides non-avian dinosaurs, pterosaurs and marine reptiles (mosasaurs, plesiosaurs) are excluded after 66 Ma; they did not survive the extinction.
 - **PBDB links:** the data service's documented single-record URLs (`data1.2/occs/single.json?id=…`, `data1.2/refs/single.json?id=…&show=both`); the classic web pages were unreliable when checked.
+
+- **§3 abundance, fixed (2026-11-02):** Damuth's law is a per-species relation (Damuth 1981 regressed the population densities of individual mammal species on their body mass; Marshall et al. 2021 applied it to one species, *T. rex*). The first version treated it as a density budget for a whole trophic level and split that among all taxa in the 150–750 km roster by evidence share, so with ~200 taxa a weakly evidenced genus came out thousands of times rarer than Damuth's law gives (e.g. *Furcatoceratops* at Hell Creek, 70 Ma: ≈ 1 per 56,000 km² instead of ≈ 1 per 8 km²). Each taxon now gets the full per-species density for its mass ("where it lived"), and a separate, provisional **presence** (0–1) from its evidence says how likely it was right here; the expected count is their product times area and habitat. Cards and the field guide show both. On the Hell Creek tile, well-sampled taxa saturate near 100% presence; a genus known from one occurrence 92 km away gets ≈ 50%. Remaining limitation: the roster still pools a 5 Myr slice window, so taxa that never coexisted can appear together at full density (the age fit only partly discounts them).
+

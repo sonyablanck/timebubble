@@ -1,0 +1,127 @@
+{
+ "datasets": [
+  {
+   "changes": "gzipped int16 grids; 0.1° DEM in 10° chunks; area-averaged to 1° for the globe",
+   "doi": "10.5281/zenodo.10659112",
+   "licence": "CC BY 4.0",
+   "name": "PALEOMAP PaleoDEMs, 2024 release (item 5a)",
+   "ref": "scotese2024data",
+   "used_for": "elevation and bathymetry per slice, 0.1°; the 1° globe grid",
+   "version": "v24221"
+  },
+  {
+   "changes": "used with pyGPlates; not redistributed",
+   "doi": "10.5281/zenodo.10659112",
+   "licence": "CC BY 4.0",
+   "name": "PALEOMAP Global Plate Model v19o_r1d (item 3a)",
+   "ref": "scotese2024data",
+   "used_for": "rotating fossil occurrences to each slice",
+   "version": "v24221"
+  },
+  {
+   "changes": "stored in 0.01 °C; nearest-age interval per slice; the 65 Ma slice uses the 60 Ma grid",
+   "doi": "10.5281/zenodo.5718392",
+   "licence": "CC BY 4.0",
+   "name": "Mean annual temperature grids (item 6a1; Scotese 2022)",
+   "ref": "scotese2022data",
+   "used_for": "temperature per slice, 1°",
+   "version": "scotese02a_v21321"
+  },
+  {
+   "changes": "stored in 0.01 mm/day (the files' units, not mm/month as the record states)",
+   "doi": "10.5281/zenodo.10659112",
+   "licence": "CC BY 4.0",
+   "name": "Mean annual precipitation grids, HadCM3L (item 6b2)",
+   "ref": "valdes2021",
+   "used_for": "moisture per slice (biomes), 1°",
+   "version": "scotese_02"
+  },
+  {
+   "changes": "rotated to each slice; mapped to body plans (pipeline/rules.csv); binned in 5° cells",
+   "doi": null,
+   "licence": "as stated at download (CC0)",
+   "name": "The Paleobiology Database",
+   "ref": "pbdb",
+   "used_for": "fossil occurrences: who lived where",
+   "version": null
+  }
+ ],
+ "hand_entered": [
+  {
+   "ref": "judd2024",
+   "what": "Global mean surface temperature per stage (PhanDA percentiles), for the spread between reconstructions on info cards"
+  },
+  {
+   "ref": "brugger2017",
+   "what": "Impact Winter cooling (26 °C peak, ~3 sub-freezing years, ~30-year recovery)"
+  },
+  {
+   "ref": "vajda2004",
+   "what": "Fern Spike duration (~8,000–20,000 years)"
+  },
+  {
+   "ref": "peel2007",
+   "what": "Köppen–Geiger aridity threshold for biome moisture"
+  },
+  {
+   "ref": "sun2012",
+   "what": "Early Triassic lethal heat"
+  },
+  {
+   "ref": "damuth1981",
+   "what": "Population density from body mass (Damuth's law) and its T. rex calibration"
+  },
+  {
+   "ref": "marshall2021",
+   "what": "T. rex population density, ~1 per 100 km²"
+  }
+ ],
+ "papers": [
+  "scotese2024",
+  "kocsis2021",
+  "scotese2021",
+  "valdes2021"
+ ],
+ "pbdb": {
+  "access_time": "Sun 2026-11-01 09:32:06 GMT",
+  "data_license": "Creative Commons CC0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "records_found": null,
+  "retrieved_utc": "2026-11-01",
+  "url": "http://paleobiodb.org/data1.2/occs/list.csv?min_ma=62.5&max_ma=252.5&timerule=overlap&show=class,coords,env&vocab=pbdb&limit=all&datainfo"
+ },
+ "references": {
+  "brugger2017": "Brugger, J., Feulner, G. and Petri, S. (2017) 'Baby, it's cold outside: climate model simulations of the effects of the asteroid impact at the end of the Cretaceous', Geophysical Research Letters, 44(1), pp. 419–427. doi:10.1002/2016GL072241.",
+  "damuth1981": "Damuth, J. (1981) 'Population density and body size in mammals', Nature, 290(5808), pp. 699–700. doi:10.1038/290699a0.",
+  "judd2024": "Judd, E.J., Tierney, J.E., Lunt, D.J., Montañez, I.P., Huber, B.T., Wing, S.L. and Valdes, P.J. (2024) 'A 485-million-year history of Earth's surface temperature', Science, 385(6715), eadk3705. doi:10.1126/science.adk3705.",
+  "kocsis2021": "Kocsis, Á.T. and Scotese, C.R. (2021) 'Mapping paleocoastlines and continental flooding during the Phanerozoic', Earth-Science Reviews, 213, 103463. doi:10.1016/j.earscirev.2020.103463.",
+  "marshall2021": "Marshall, C.R., Latorre, D.V., Wilson, C.J., Frank, T.M., Magoulick, K.M., Zimmt, J.B. and Poust, A.W. (2021) 'Absolute abundance and preservation rate of Tyrannosaurus rex', Science, 372(6539), pp. 284–287. doi:10.1126/science.abc8300.",
+  "pbdb": "The Paleobiology Database. Available at: https://paleobiodb.org (Accessed: [date of the download; recorded in `pipeline/raw/pbdb/pbdb_query.json` and the manifest]). Licence as stated by the download: CC0 since at least November 2025 (previously CC BY 4.0).",
+  "peel2007": "Peel, M.C., Finlayson, B.L. and McMahon, T.A. (2007) 'Updated world map of the Köppen–Geiger climate classification', Hydrology and Earth System Sciences, 11(5), pp. 1633–1644. doi:10.5194/hess-11-1633-2007. Source of the aridity threshold used for biome moisture.",
+  "scotese2021": "Scotese, C.R., Song, H., Mills, B.J.W. and van der Meer, D.G. (2021) 'Phanerozoic paleotemperatures: the earth's changing climate during the last 540 million years', Earth-Science Reviews, 215, 103503. doi:10.1016/j.earscirev.2021.103503.",
+  "scotese2022data": "Scotese, C.R. (2022) Global Mean Surface Temperatures for 100 Phanerozoic Time Intervals (version scotese02a_v21321) [Dataset]. Zenodo. doi:10.5281/zenodo.5718392. CC BY 4.0.",
+  "scotese2024": "Scotese, C.R., Vérard, C., Burgener, L., Elling, R.P. and Kocsis, A.T. (2024) 'The Cretaceous world: plate tectonics, palaeogeography and palaeoclimate', Geological Society, London, Special Publications, 544, pp. 31–202 (published online 2024; printed volume 2025). doi:10.1144/SP544-2024-28.",
+  "scotese2024data": "Scotese, C.R., Vérard, C., Burgener, L., Elling, R.P. and Kocsis, A.T. (2024) Phanerozoic-scope supplementary material to 'The Cretaceous World: Plate Tectonics, Paleogeography, and Paleoclimate' from the PALEOMAP project (v24221) [Dataset]. Zenodo. doi:10.5281/zenodo.10659112. CC BY 4.0. Source of the PaleoDEMs and plate model (v19o_r1d) used by Time Bubble.",
+  "sun2012": "Sun, Y., Joachimski, M.M., Wignall, P.B., Yan, C., Chen, Y., Jiang, H., Wang, L. and Lai, X. (2012) 'Lethally hot temperatures during the Early Triassic greenhouse', Science, 338(6105), pp. 366–370. doi:10.1126/science.1224126.",
+  "vajda2004": "Vajda, V., Raine, J.I., Hollis, C.J. and Strong, C.P. (2004) 'Global effects of the Chicxulub impact on terrestrial vegetation: review of the palynological record from New Zealand Cretaceous/Tertiary boundary', in Dypvik, H., Burchell, M.J. and Claeys, P. (eds) Cratering in Marine Environments and on Ice. Berlin: Springer, pp. 57–74.",
+  "valdes2021": "Valdes, P.J., Scotese, C.R. and Lunt, D.J. (2021) 'Deep ocean temperatures through time', Climate of the Past, 17(4), pp. 1483–1506. doi:10.5194/cp-17-1483-2021."
+ },
+ "software": [
+  {
+   "licence": "MIT",
+   "name": "Three.js"
+  },
+  {
+   "licence": "MIT",
+   "name": "Preact"
+  },
+  {
+   "licence": "MIT",
+   "name": "Vite"
+  },
+  {
+   "licence": "GPL-2.0-only",
+   "name": "pyGPlates (pipeline only, not shipped)"
+  }
+ ]
+}

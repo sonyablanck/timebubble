@@ -6,19 +6,24 @@
 import * as THREE from "three";
 import { Sky } from "three/examples/jsm/objects/Sky.js";
 import { F, FLAG_INFO, flagNames, Level, levelOf, LEVEL_NAMES, type FlagName } from "../provenance/flags";
-import { fmtArea } from "../ecology/roster";
+import { fmtArea, presenceLabel, presencePct, TILE_AREA_KM2 } from "../ecology/roster";
 import { impactWinterCooling, impactWinterLight, type Aftermath } from "../biome/climate";
 import { PLANT_NAMES, topPlants, type PlantMix } from "../biome/plants";
 import type { TileEcology } from "../ecology";
+import type { ClimateParams } from "../data";
 import { BIOME_NAMES } from "../biome/rules";
 import type { TerrainClient } from "../terrain/client";
 import type { InspectResult } from "../terrain/service";
 import type { FarField, TileData } from "../terrain/tile";
 import { MAX_ABS_LAT, ring, tileBounds, tileIdFor, tileKey, type TileId } from "../terrain/tilegrid";
-import { makeTerrainMaterial, makeUniforms, makeWaterMaterial, type TerrainUniforms } from "./materials";
+import { makeTerrainMaterial, makeUniforms, makeWaterMaterial, MAX_SITES, OVERLAY, type TerrainUniforms } from "./materials";
+import { SeaDepth } from "./sea";
 import { buildFarMesh, buildSea, buildTileMesh, farHeightAt, tileHeightAt, type FarMesh, type TileMesh } from "./meshes";
 import { buildMorph, type MorphFn } from "./morph";
 import { FaunaLayer, FloraLayer, type LiveAnimal, type PlantPick } from "./organisms/layers";
+import { LocateMarker } from "./organisms/locator";
+import type { WalkViewState } from "../ui/url";
+import type { PlantPlan } from "../biome/plants";
 import { headingOf, LocalFrame, sunDirection } from "./projection";
 
 // ------------------------------------------------------------------ constants (render §2, §5, §6)
@@ -33,10 +38,33 @@ export const MAX_SLOPE_DEG = 40;
 const HOP_MS = 3.2, GRAVITY = 9.81;
 const FAR_HALF_M = 60_000, FAR_N = 241;
 const CURRENT_STEP = 1, RING_STEP = 4;
+/** Half-size of the sun's shadow box (m); plants within PLANT_SHADOW_M of the player cast shadows. */
+const SHADOW_HALF_M = 120;
+
+function readShadowPref(): boolean {
+  try { return localStorage.getItem("tb.shadows") !== "0"; } catch { return true; }
+}
 const TILE_CACHE = 18;
 const INSPECT_RANGE_M = 9000;
 
 export type Mode = "walk" | "fly";
+export type OverlayMode = "off" | "source" | "focus" | "evidence";
+export interface Shares { data: number; inferred: number; generated: number; samples: number }
+
+/** Flags offered in focus mode (always-on flags such as COLOUR_GENERATED would light up everything). */
+export const FOCUS_FLAGS: FlagName[] = [
+  "GENERATED_RELIEF", "GENERATED_COAST", "TAXON_FROM_DATA", "TAXON_INFERRED", "DENSITY_BOOSTED", "STRADDLES_KPG",
+  "SIZE_FROM_RULE", "PLANTS_FROM_DATA", "PLANTS_FROM_PRIOR", "CLIMATE_AGE_MISMATCH", "THERMAL_EXCLUSION", "ICE_CONTESTED", "AFTERMATH_RECON",
+];
+
+/** Field guide "Locate" (ui/ §3): a taxon on the loaded tiles, or a plant type within draw distance. */
+export type LocateTarget = { kind: "animal"; key: string; name: string } | { kind: "plant"; plan: PlantPlan | "snag"; name: string };
+export interface LocateStatus {
+  name: string;
+  found: boolean;
+  distanceM: number;   // horizontal, from the player
+  bearingDeg: number;  // compass bearing from the player
+}
 
 export interface PlayerState {
   lat: number; lon: number;
@@ -44,12 +72,17 @@ export interface PlayerState {
   groundM: number | null;      // terrain height under the player (null = not loaded)
   headingDeg: number; pitchDeg: number;
   mode: Mode; flySpeed: number; hours: number;
-  overlay: boolean;
+  overlay: boolean;            // any overlay mode on
+  overlayMode: OverlayMode;
+  focusFlag: FlagName;
+  shares: Shares | null;       // in-view area shares by level (overlay on), provenance §3c
+  nearestSiteKm: number | null; // evidence mode: nearest fossil site to the player
   tiles: { ready: number; wanted: number; current: "coarse" | "full" | "loading" };
   plants: number;   // plant instances drawn
   animals: number;  // animals on the loaded tiles
   sliceAge: number;
   aftermath: Aftermath | null;
+  locate: LocateStatus | null;
 }
 
 export interface InfoCard {
@@ -82,14 +115,18 @@ export class WalkRenderer {
   private readonly uniforms: TerrainUniforms = makeUniforms();
   private readonly nearMat: THREE.MeshStandardMaterial;
   private readonly farMat: THREE.MeshStandardMaterial;
-  private readonly waterMat = makeWaterMaterial();
   private readonly sky = new Sky();
   private readonly sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
-  private readonly hemi = new THREE.HemisphereLight(0xc4d6ff, 0x4d4436, 0.9);
+  private readonly sunDir = new THREE.Vector3(0, 1, 0);
+  private readonly hemi = new THREE.HemisphereLight(0xc4d6ff, 0x6f6a55, 0.9);
   private readonly tileGroup = new THREE.Group();
-  private readonly organismUniforms = { u_overlay: this.uniforms.u_overlay, u_time: { value: 0 } };
+  private readonly organismUniforms = { u_overlay: this.uniforms.u_overlay, u_focus: this.uniforms.u_focus, u_sites: this.uniforms.u_sites, u_nsites: this.uniforms.u_nsites, u_time: { value: 0 }, u_motion: { value: 1 } };
+  private readonly seaDepth = new SeaDepth(this.organismUniforms.u_time, this.organismUniforms.u_motion);
+  private readonly waterMat = makeWaterMaterial(this.uniforms, this.seaDepth.uniforms);
   private readonly flora = new FloraLayer(this.organismUniforms);
   private readonly fauna = new FaunaLayer(this.organismUniforms);
+  private readonly marker = new LocateMarker();
+  private locating: { target: LocateTarget; animal: LiveAnimal | null; plant: { lat: number; lon: number; heightM: number } | null; searchedAt: number; status: LocateStatus } | null = null;
   private floraDirty = true;
 
   private frame = new LocalFrame(0, 0);
@@ -116,6 +153,18 @@ export class WalkRenderer {
   private hours = 10.5;
   private aftermath: Aftermath | null = null;
   private overlay = false;
+  private prefs = { mouseSensitivity: 1, invertY: false };
+  private climateParams: ClimateParams | null = null;
+  /** 0..1 heat haze from the local mean annual temperature (render §6; generated look). */
+  private haze = 0;
+  private hazeGen = 0;
+  private overlayMode: OverlayMode = "off";
+  private focusFlag: FlagName = "GENERATED_RELIEF";
+  private shares: Shares | null = null;
+  private nearestSiteKm: number | null = null;
+  private sharesAt = -1e9;
+  private sitesAt = -1e9;
+  private idTarget: THREE.WebGLRenderTarget | null = null;
   private readonly keys = new Set<string>();
 
   private raf = 0;
@@ -139,6 +188,15 @@ export class WalkRenderer {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.55;
+    // sun shadows (render §6): a box around the player; L toggles them (remembered in localStorage)
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    const sc = this.sun.shadow.camera;
+    sc.left = -SHADOW_HALF_M; sc.right = SHADOW_HALF_M; sc.top = SHADOW_HALF_M; sc.bottom = -SHADOW_HALF_M; sc.near = 1; sc.far = 1500;
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.normalBias = 0.08;
+    this.sun.castShadow = readShadowPref();
 
     this.nearMat = makeTerrainMaterial(this.uniforms, { holes: false });
     this.farMat = makeTerrainMaterial(this.uniforms, { holes: true });
@@ -154,9 +212,10 @@ export class WalkRenderer {
     this.sky.frustumCulled = false;
 
     this.scene.add(this.sky, this.sun, this.sun.target, this.hemi, this.tileGroup, buildSea(FAR_HALF_M * 1.3, this.waterMat),
-      this.flora.group, this.fauna.group);
+      this.flora.group, this.fauna.group, this.marker.group);
     this.scene.fog = new THREE.Fog(0xaebccb, 2500, 58_000);
     this.camera.rotation.order = "YXZ";
+    this.flora.init(this.renderer);
 
     this.bindInput();
     const ro = new ResizeObserver(() => this.resize());
@@ -188,6 +247,36 @@ export class WalkRenderer {
 
   get representativeFauna(): boolean { return this.terrain.ecologySettings.representativeFauna; }
 
+  /** The slice's curated climate parameters (pipeline §1d), for info cards. */
+  setClimateParams(p: ClimateParams | null): void { this.climateParams = p; }
+
+  /** The view as the URL stores it (provenance §5): where you stand, where you look, settings. */
+  viewState(): WalkViewState {
+    const [lat, lon] = this.playerLatLon();
+    const st = this.state();
+    return {
+      lat, lon, headingDeg: st.headingDeg, pitchDeg: st.pitchDeg,
+      fly: this.mode === "fly", ...(this.mode === "fly" ? { altitudeM: this.alt } : {}),
+      overlay: this.overlayMode, ...(this.overlayMode === "focus" ? { focus: this.focusFlag } : {}),
+      aftermath: this.aftermath, representativeFauna: this.representativeFauna,
+    };
+  }
+
+  /** Restore the parts of a saved view that entering doesn't set: look direction, flight, overlay, settings. */
+  applyView(v: Partial<WalkViewState>): void {
+    if (v.headingDeg !== undefined) this.yaw = -v.headingDeg * Math.PI / 180;
+    if (v.pitchDeg !== undefined) this.pitch = Math.max(-1.5, Math.min(1.5, v.pitchDeg * Math.PI / 180));
+    if (v.fly) {
+      this.mode = "fly";
+      const g = this.groundAt(this.x, this.z);
+      this.alt = Math.max(v.altitudeM ?? (Math.max(g ?? 0, 0) + 30), Math.max(g ?? 0, 0) + FLY_CLEARANCE_M);
+    }
+    if (v.overlay && v.overlay !== "off") this.setOverlayMode(v.overlay, v.focus && v.focus in F ? v.focus as FlagName : undefined);
+    if (v.representativeFauna === false && this.representativeFauna) this.setRepresentativeFauna(false);
+    this.emitState(true);
+    this.draw();
+  }
+
   /** Load the tile under (lat, lon) and its surroundings, put the player there, start the loop. */
   async enter(req: EnterRequest, progress?: LoadProgress): Promise<void> {
     const lat = Math.max(-MAX_ABS_LAT, Math.min(MAX_ABS_LAT, req.lat));
@@ -196,6 +285,7 @@ export class WalkRenderer {
     this.sliceAge = req.sliceAge;
     this.aftermath = req.aftermath ?? null;
     this.terrain.aftermath = this.aftermath;
+    this.haze = 0;
     this.current = tileIdFor(lat, req.lon);
     const b = tileBounds(this.current);
     this.frame = new LocalFrame(b.centreLat, b.centreLon);
@@ -228,6 +318,7 @@ export class WalkRenderer {
     this.vy = 0;
     this.stream();
     this.start();
+    void this.updateHaze();
     progress?.("Ready", 1);
   }
 
@@ -238,10 +329,88 @@ export class WalkRenderer {
   }
 
   setOverlay(on: boolean): void {
-    this.overlay = on;
-    this.uniforms.u_overlay.value = on ? 1 : 0;
-    this.waterMat.opacity = on ? 0.45 : 0.8;
+    this.setOverlayMode(on ? (this.overlayMode === "off" ? "source" : this.overlayMode) : "off");
+  }
+
+  /** Overlay mode (provenance §3): off, source (by level), focus (one flag) or evidence (distance to fossils). */
+  setOverlayMode(mode: OverlayMode, focus?: FlagName): void {
+    if (focus) this.focusFlag = focus;
+    this.overlayMode = mode;
+    this.overlay = mode !== "off";
+    this.uniforms.u_overlay.value = mode === "off" ? OVERLAY.OFF : mode === "source" ? OVERLAY.SOURCE : mode === "focus" ? OVERLAY.FOCUS : OVERLAY.EVIDENCE;
+    this.uniforms.u_focus.value = F[this.focusFlag];
+    this.waterMat.opacity = this.overlay ? 0.45 : 0.8;
+    if (mode === "evidence") this.updateSites();
+    if (!this.overlay) this.shares = null;
+    else { this.sharesAt = -1e9; this.measureShares(); }
     this.emitState(true);
+    this.draw();
+  }
+
+  /** Shift+P: source → focus → evidence → source. */
+  cycleOverlay(): void {
+    const order: OverlayMode[] = ["source", "focus", "evidence"];
+    this.setOverlayMode(order[(order.indexOf(this.overlayMode) + 1) % order.length]!);
+  }
+
+  /** Evidence mode: the nearest fossil sites to the player from the loaded tiles, in local metres. */
+  private updateSites(): void {
+    this.sitesAt = performance.now();
+    const seen = new Set<string>(), pts: { x: number; z: number; d: number }[] = [];
+    for (const t of this.tiles.values()) {
+      const s = t.data.ecology?.sites;
+      if (!s) continue;
+      for (let i = 0; i < s.length; i += 2) {
+        const key = `${s[i]!.toFixed(2)},${s[i + 1]!.toFixed(2)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const [e, n] = this.frame.en(s[i]!, s[i + 1]!);
+        pts.push({ x: e, z: -n, d: Math.hypot(e - this.x, -n - this.z) });
+      }
+    }
+    pts.sort((a, b) => a.d - b.d);
+    this.nearestSiteKm = pts.length ? pts[0]!.d / 1000 : null;
+    const u = this.uniforms.u_sites.value;
+    const n = Math.min(MAX_SITES, pts.length);
+    for (let i = 0; i < MAX_SITES; i++) u[i]!.set(i < n ? pts[i]!.x : 1e9, i < n ? pts[i]!.z : 1e9);
+    this.uniforms.u_nsites.value = n;
+  }
+
+  /**
+   * In-view shares (provenance §3c): redraw the view at low resolution with each surface's level as
+   * a flat colour (sky excluded) and count pixels. Area share of what is visible, not object counts.
+   */
+  measureShares(): Shares | null {
+    if (!this.overlay) return null;
+    this.sharesAt = performance.now();
+    const W = 96, H = 54;
+    this.idTarget ??= new THREE.WebGLRenderTarget(W, H, { depthBuffer: true });
+    const r = this.renderer, sc = this.scene;
+    const prev = { mode: this.uniforms.u_overlay.value, bg: sc.background, sky: this.sky.visible, marker: this.marker.group.visible, shadow: r.shadowMap.autoUpdate };
+    this.uniforms.u_overlay.value = OVERLAY.ID;
+    sc.background = new THREE.Color(0, 0, 0);
+    this.sky.visible = false;
+    this.marker.group.visible = false;
+    r.shadowMap.autoUpdate = false;
+    r.setRenderTarget(this.idTarget);
+    r.clear();
+    r.render(sc, this.camera);
+    const px = new Uint8Array(W * H * 4);
+    r.readRenderTargetPixels(this.idTarget, 0, 0, W, H, px);
+    r.setRenderTarget(null);
+    this.uniforms.u_overlay.value = prev.mode;
+    sc.background = prev.bg;
+    this.sky.visible = prev.sky;
+    this.marker.group.visible = prev.marker;
+    r.shadowMap.autoUpdate = prev.shadow;
+    let d = 0, i = 0, g = 0;
+    for (let k = 0; k < W * H; k++) {
+      const R0 = px[k * 4]!, G0 = px[k * 4 + 1]!, B0 = px[k * 4 + 2]!;
+      if (R0 > 127) d++; else if (G0 > 127) i++; else if (B0 > 127) g++;
+    }
+    const n = d + i + g;
+    this.shares = n ? { data: d / n, inferred: i / n, generated: g / n, samples: n } : null;
+    return this.shares;
   }
 
   setTimeOfDay(hours: number): void {
@@ -288,7 +457,7 @@ export class WalkRenderer {
       };
     } else {
       const r = await this.terrain.inspect(this.sliceAge, hit.lat, hit.lon);
-      card = terrainCard(r, hit.water, this.aftermath);
+      card = terrainCard(r, hit.water, this.aftermath, this.climateParams);
     }
     this.cardCbs.forEach((cb) => cb(card));
     return card;
@@ -300,8 +469,14 @@ export class WalkRenderer {
     /** Advance the simulation without drawing (draw with frameMs()). */
     step: (seconds: number) => { for (let t = 0; t < seconds; t += 1 / 30) this.update(1 / 30); this.emitState(true); },
     teleport: (lat: number, lon: number) => this.teleport(lat, lon),
+    /** Sea floor texture range and the heat-haze level (render §6b). */
+    sea: () => ({ ...this.seaDepth.stats(), haze: this.haze }),
     look: (headingDeg: number, pitchDeg: number) => { this.yaw = -headingDeg * Math.PI / 180; this.pitch = pitchDeg * Math.PI / 180; this.draw(); },
     state: () => this.state(),
+    overlayMode: (m: OverlayMode, f?: FlagName) => this.setOverlayMode(m, f),
+    shares: () => this.measureShares(),
+    locate: (t: LocateTarget | null) => this.locate(t),
+    goToLocated: () => this.goToLocated(),
     /** Turn to face the nearest drawn animal; returns its name and distance. */
     aimAtAnimal: (minLengthM = 0) => {
       const n = this.fauna.nearest(this.x, this.z, minLengthM);
@@ -332,6 +507,8 @@ export class WalkRenderer {
     this.disposers.forEach((d) => d());
     this.nearMat.dispose();
     this.flora.dispose();
+    this.marker.dispose();
+    this.idTarget?.dispose();
     this.fauna.dispose();
     this.farMat.dispose();
     this.waterMat.dispose();
@@ -369,6 +546,7 @@ export class WalkRenderer {
     this.camera.position.set(this.x, y, this.z);
     this.camera.rotation.set(this.pitch, this.yaw, 0);
     this.sky.position.copy(this.camera.position);
+    if (this.sun.castShadow) this.placeSun();
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -427,6 +605,13 @@ export class WalkRenderer {
       this.flora.rebuild([...this.tiles.values()].map((t) => t.data), this.frame, this.x, this.z, hAt);
       this.floraDirty = false;
     }
+    this.seaDepth.update(this.x, this.z, (x, z) => this.groundAt(x, z));
+    this.updateLocate();
+    if (this.overlay) {
+      const now = performance.now();
+      if (this.overlayMode === "evidence" && now - this.sitesAt > 2000) this.updateSites();
+      if (now - this.sharesAt > 500) this.measureShares();
+    }
 
     const [lat, lon] = this.playerLatLon();
     const id = tileIdFor(lat, lon);
@@ -466,6 +651,7 @@ export class WalkRenderer {
     [this.x, this.z] = this.frame.transfer(this.x, this.z, next);
     this.fauna.rebase(this.frame, next);
     this.floraDirty = true;
+    this.seaDepth.invalidate();
     this.frame = next;
     this.current = id;
     this.morph = buildMorph(next, ring(id));
@@ -473,6 +659,7 @@ export class WalkRenderer {
     this.far?.reproject(next);
     this.updateHoles();
     this.updateSun();
+    void this.updateHaze();
     this.stream();
     this.emitEcology();
     // keep the player on the ground if the new tile's mesh differs by step
@@ -486,7 +673,7 @@ export class WalkRenderer {
     const wanted = ring(this.current);
     const keys = new Set(wanted.map(tileKey));
     for (const [k, t] of this.tiles) {
-      if (!keys.has(k)) { this.tileGroup.remove(t.mesh); t.dispose(); this.tiles.delete(k); this.fauna.removeTile(k); this.floraDirty = true; }
+      if (!keys.has(k)) { this.tileGroup.remove(t.mesh); t.dispose(); this.tiles.delete(k); this.fauna.removeTile(k); this.floraDirty = true; this.seaDepth.invalidate(); }
     }
     // the current tile first (coarse, then full), then the ring
     const order: [TileId, number][] = [[this.current, RING_STEP], [this.current, CURRENT_STEP]];
@@ -556,6 +743,8 @@ export class WalkRenderer {
     const morph = this.morphFor(t.id);
     if (morph) tm.reproject(this.frame, morph);
     this.tiles.set(k, tm);
+    this.seaDepth.invalidate();
+    tm.mesh.receiveShadow = true;   // terrain receives but does not cast: casting would redraw the whole tile each frame
     this.tileGroup.add(tm.mesh);
     if (wasStale) this.fauna.resetTile(t, this.frame); else this.fauna.setTile(t, this.frame);
     this.floraDirty = true;
@@ -599,6 +788,7 @@ export class WalkRenderer {
     for (const t of this.tiles.values()) { this.tileGroup.remove(t.mesh); t.dispose(); }
     this.tiles.clear();
     this.fauna.clear();
+    this.locate(null);
     this.floraDirty = true;
     this.cache.clear();
     this.inflight.clear();
@@ -616,7 +806,8 @@ export class WalkRenderer {
     const [dx, dy, dz] = sunDirection(this.frame.lat0, this.hours);
     const d = new THREE.Vector3(dx, dy, dz);
     (this.sky.material as THREE.ShaderMaterial).uniforms.sunPosition!.value.copy(d);
-    this.sun.position.copy(d).multiplyScalar(1000);
+    this.sunDir.copy(d);
+    this.placeSun();
     const day = THREE.MathUtils.smoothstep(dy, -0.05, 0.15);
     // Aftermath atmosphere (render §6): Impact Winter dims the sun and turns the sky grey-brown
     const winter = this.aftermath?.phase === "impactWinter";
@@ -624,17 +815,147 @@ export class WalkRenderer {
     const su = (this.sky.material as THREE.ShaderMaterial).uniforms;
     su.turbidity!.value = winter ? 5 + 15 * (1 - light) : 5;
     su.rayleigh!.value = winter ? 1.4 * light + 0.1 : 1.4;
-    this.sun.intensity = 2.4 * day * light;
-    this.hemi.intensity = (0.15 + 0.75 * day) * (0.6 + 0.4 * light) * (winter ? 2.6 : 1);
-    this.renderer.toneMappingExposure = (0.35 + 0.2 * day) * (this.aftermath?.phase === "fernSpike" ? 0.92 : 1);
+    this.sun.intensity = 2.2 * day * light;
+    this.hemi.intensity = (0.4 + 2.8 * day) * (0.6 + 0.4 * light) * (winter ? 1.2 : 1);   // strong sky fill, so shade under trees stays readable
+    this.renderer.toneMappingExposure = 0.85 * (0.35 + 0.2 * day) * (this.aftermath?.phase === "fernSpike" ? 0.92 : 1);
+    // distant cut-outs are baked at midday light: scale them with the current sun and sky
+    this.flora.impostorUniforms.u_bright.value = Math.min(1, (this.sun.intensity * Math.max(0.2, dy) + this.hemi.intensity) / (2.2 * 0.75 + 3.2));
     const fog = (this.scene.fog as THREE.Fog);
     if (winter) fog.color.setHSL(0.08, 0.12, (0.12 + 0.45 * day) * (0.35 + 0.65 * light));
     else fog.color.setHSL(0.58, 0.18, 0.12 + 0.6 * day);
-    fog.far = winter ? 15_000 + 43_000 * light : 58_000;
+    fog.far = winter ? 15_000 + 43_000 * light : 58_000 * (1 - 0.55 * this.haze);
+    if (!winter && this.haze > 0) {
+      // heat haze: a paler, warmer horizon and a hazier sun disc
+      fog.color.lerp(new THREE.Color().setHSL(0.11, 0.25, 0.14 + 0.62 * day), this.haze * 0.75);
+      su.turbidity!.value = 5 + 7 * this.haze;
+      su.mieCoefficient!.value = 0.004 + 0.008 * this.haze;
+    } else if (!winter) su.mieCoefficient!.value = 0.004;
     // Impact Winter overcast: the analytic sky can't darken, so a fog-coloured sky replaces it
     this.sky.visible = !winter || light > 0.9;
     // the background skips tone mapping, so darken it to sit with the tone-mapped fog at the horizon
     this.scene.background = this.sky.visible ? null : fog.color.clone().multiplyScalar(0.5);
+  }
+
+  /** Heat haze from the local temperature (lapse-corrected, from the slice's climate grid). */
+  private async updateHaze(): Promise<void> {
+    const gen = ++this.hazeGen;
+    const [lat, lon] = this.playerLatLon();
+    try {
+      const r = await this.terrain.inspect(this.sliceAge, lat, lon);
+      if (gen !== this.hazeGen) return;
+      this.haze = hazeFromTemperature(r.biome.climate.temperatureC);
+    } catch { return; }   // keep the last value; the next move retries
+    this.updateSun();
+  }
+
+  /** Keep the shadow box centred on the player, snapped to shadow-map texels so edges don't crawl. */
+  private placeSun(): void {
+    const texel = (SHADOW_HALF_M * 2) / this.sun.shadow.mapSize.x;
+    const snap = (v: number) => Math.round(v / texel) * texel;
+    const gy = Math.max(this.groundAt(this.x, this.z) ?? this.alt, 0) - LocalFrame.drop(this.x, this.z);
+    this.sun.target.position.set(snap(this.x), gy, snap(this.z));
+    this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 700);
+    this.sun.target.updateMatrixWorld();
+  }
+
+  /** Draw a fresh frame and return the canvas, for photo mode (preserveDrawingBuffer is on). */
+  snapshot(): HTMLCanvasElement {
+    this.draw();
+    return this.canvas;
+  }
+
+  /** Sun shadows on or off (L). */
+  setShadows(on: boolean): void {
+    this.sun.castShadow = on;
+    try { localStorage.setItem("tb.shadows", on ? "1" : "0"); } catch { /* storage unavailable */ }
+    this.notice(on ? "Shadows on" : "Shadows off (faster)");
+    this.draw();
+  }
+
+  get shadows(): boolean { return this.sun.castShadow; }
+
+  // ------------------------------------------------------------------ locate (ui/ §3)
+
+  /**
+   * Point the player at the nearest individual of a taxon (on the 3 × 3 loaded tiles) or the nearest
+   * drawn plant of a type, with a marker and a HUD arrow. null stops locating. Returns the first
+   * status; `found: false` when none is drawn nearby.
+   */
+  locate(target: LocateTarget | null): LocateStatus | null {
+    if (!target) { this.locating = null; this.marker.hide(); this.emitState(true); this.draw(); return null; }
+    this.locating = { target, animal: null, plant: null, searchedAt: -1e9, status: { name: target.name, found: false, distanceM: 0, bearingDeg: 0 } };
+    this.updateLocate(true);
+    const st = this.locating.status;
+    if (!st.found) {
+      this.notice(target.kind === "animal"
+        ? `${target.name} is in this area's fossil record, but none is drawn on the nine loaded tiles (too rare, or over the animal budget).`
+        : `No ${target.name.toLowerCase()} drawn within sight of here.`);
+      this.locating = null;
+      this.marker.hide();
+    }
+    this.emitState(true);
+    this.draw();
+    return st;
+  }
+
+  /** "Take me there": stand a few body lengths from the located organism, facing it. */
+  goToLocated(): void {
+    const L = this.locating;
+    if (!L) return;
+    this.updateLocate(true);
+    if (!L.status.found) return;
+    const tx = this.marker.group.position.x, tz = this.marker.group.position.z;
+    const size = L.animal ? L.animal.lengthM : Math.min(L.plant?.heightM ?? 5, 12);
+    const off = Math.max(12, size * 2.5);
+    let nx = this.x - tx, nz = this.z - tz;
+    const d = Math.hypot(nx, nz) || 1;
+    nx /= d; nz /= d;
+    this.x = tx + nx * off;
+    this.z = tz + nz * off;
+    const g = this.groundAt(this.x, this.z);
+    if (g === null || g < 0) { this.mode = "fly"; this.alt = Math.max(g ?? 0, 0) + 20; }
+    else if (this.mode === "walk") this.alt = g + EYE_M;
+    else this.alt = Math.max(this.alt, g + 10);
+    this.hop = 0;
+    this.yaw = Math.atan2(nx, nz);   // face back along the approach: towards the target
+    this.pitch = -0.08;
+    this.updateLocate(true);
+    this.emitState(true);
+    this.draw();
+  }
+
+  private updateLocate(force = false): void {
+    const L = this.locating;
+    if (!L) return;
+    const now = performance.now();
+    // re-search every 3 s (a nearer one may have come into range), or when the tracked one is gone
+    if (force || now - L.searchedAt > 3000 || (L.animal && !this.fauna.has(L.animal))) {
+      L.searchedAt = now;
+      if (L.target.kind === "animal") {
+        const key = L.target.key;
+        L.animal = this.fauna.findNearest((t) => t.key === key, this.x, this.z);
+      } else {
+        const p = this.flora.findNearest(L.target.plan, this.x, this.z);
+        L.plant = p ? { lat: p.lat, lon: p.lon, heightM: p.heightM } : null;
+      }
+    }
+    let x: number, y: number, z: number, size: number;
+    if (L.animal) {
+      x = L.animal.agent.x; z = L.animal.agent.z; y = L.animal.y; size = L.animal.lengthM;
+    } else if (L.plant) {
+      [x, z] = this.frame.en(L.plant.lat, L.plant.lon);
+      z = -z;
+      y = Math.max(this.heightAtLatLon(L.plant.lat, L.plant.lon) ?? 0, 0) - LocalFrame.drop(x, z);
+      size = Math.min(L.plant.heightM, 12);
+    } else {
+      L.status = { ...L.status, found: false };
+      this.marker.hide();
+      return;
+    }
+    const dx = x - this.x, dz = z - this.z;
+    L.status = { name: L.target.name, found: true, distanceM: Math.hypot(dx, dz), bearingDeg: headingOf(dx, dz) };
+    this.marker.place(x, y, z, size);
+    this.marker.update(this.organismUniforms.u_time.value, L.status.distanceM);
   }
 
   // ------------------------------------------------------------------ picking (render §9)
@@ -678,7 +999,9 @@ export class WalkRenderer {
     on(window, "keydown", (e) => {
       if (!this.live || isTyping(e)) return;
       if (e.code === "Escape") { if (document.pointerLockElement !== c) this.exit(); return; }
+      if (e.code === "KeyP" && e.shiftKey) { if (!this.overlay) this.setOverlayMode("source"); else this.cycleOverlay(); return; }
       if (e.code === "KeyP") { this.setOverlay(!this.overlay); return; }
+      if (e.code === "KeyL") { this.setShadows(!this.sun.castShadow); return; }
       if (e.code === "KeyF") { this.toggleFly(); return; }
       if (e.code === "KeyI") { void this.inspect(); return; }
       if (e.code === "BracketLeft") { this.setTimeOfDay(this.hours - 0.5); return; }
@@ -723,8 +1046,23 @@ export class WalkRenderer {
   }
 
   private look(dx: number, dy: number): void {
-    this.yaw -= dx * 0.0025;
-    this.pitch = Math.max(-1.5, Math.min(1.5, this.pitch - dy * 0.0025));
+    const k = 0.0025 * this.prefs.mouseSensitivity;
+    this.yaw -= dx * k;
+    this.pitch = Math.max(-1.5, Math.min(1.5, this.pitch - dy * k * (this.prefs.invertY ? -1 : 1)));
+  }
+
+  /** ui/ §4 settings that the renderer honours. */
+  applySettings(s: { detail: "low" | "medium" | "high"; shadows: boolean; representativeFauna: boolean; mouseSensitivity: number; invertY: boolean; reducedMotion: boolean }): void {
+    this.prefs = { mouseSensitivity: s.mouseSensitivity, invertY: s.invertY };
+    const dpr = window.devicePixelRatio || 1;
+    this.renderer.setPixelRatio(s.detail === "low" ? 1 : s.detail === "medium" ? Math.min(1.5, dpr) : Math.min(2, dpr));
+    const scale = s.detail === "low" ? 0.55 : s.detail === "medium" ? 0.8 : 1;
+    if (this.flora.distanceScale !== scale) { this.flora.distanceScale = scale; this.floraDirty = true; }
+    this.organismUniforms.u_motion.value = s.reducedMotion ? 0 : 1;
+    if (s.shadows !== this.sun.castShadow) this.setShadows(s.shadows);
+    if (s.representativeFauna !== this.representativeFauna) this.setRepresentativeFauna(s.representativeFauna);
+    this.resize();
+    this.draw();
   }
 
   private resize(): void {
@@ -746,9 +1084,11 @@ export class WalkRenderer {
       lat, lon, altitudeM: this.alt + this.hop, groundM: this.groundAt(this.x, this.z),
       headingDeg: headingOf(-Math.sin(this.yaw), -Math.cos(this.yaw)), pitchDeg: (this.pitch * 180) / Math.PI,
       mode: this.mode, flySpeed: this.flySpeed, hours: this.hours, overlay: this.overlay,
+      overlayMode: this.overlayMode, focusFlag: this.focusFlag, shares: this.shares, nearestSiteKm: this.nearestSiteKm,
       tiles: { ready: wanted.filter((k) => this.tiles.has(k)).length, wanted: wanted.length, current: !cur ? "loading" : cur.data.step === CURRENT_STEP ? "full" : "coarse" },
       plants: this.flora.instances, animals: this.fauna.count,
       sliceAge: this.sliceAge, aftermath: this.aftermath,
+      locate: this.locating?.status ?? null,
     };
   }
 
@@ -784,7 +1124,18 @@ function flagCard(name: FlagName) {
   return { name, ...FLAG_INFO[name] };
 }
 
-export function terrainCard(r: InspectResult, water: boolean, aftermath: Aftermath | null = null): InfoCard {
+/**
+ * The spread between reconstructions (DESIGN §8): the global mean of the grid this slice uses
+ * against PhanDA's for the same stage, so a reader sees how uncertain the temperatures are.
+ */
+export function gmstLine(p: ClimateParams): string {
+  const s = p.gmst_scotese!, j = p.gmst_judd!;
+  const d = j.p50 - s.c;
+  return `${s.c.toFixed(1)} °C in this grid (Scotese 2022); ${j.p50.toFixed(1)} °C in PhanDA for the ${j.stage} (68% range ${j.p16.toFixed(1)}–${j.p84.toFixed(1)} °C; Judd et al. 2024)`
+    + (Math.abs(d) >= 2 ? `: PhanDA is ${Math.abs(d).toFixed(0)} °C ${d > 0 ? "warmer" : "cooler"}, so local temperatures here may be off by a similar amount` : "");
+}
+
+export function terrainCard(r: InspectResult, water: boolean, aftermath: Aftermath | null = null, params: ClimateParams | null = null): InfoCard {
   const level = water ? Level.GENERATED : levelOf("terrain", r.flags, r.strength);
   const names = [...new Set([...r.flagNames, ...(water ? [] : r.biomeFlagNames)])];
   const flags = names.map((n) => flagCard(n as FlagName));
@@ -792,7 +1143,7 @@ export function terrainCard(r: InspectResult, water: boolean, aftermath: Afterma
     { label: "Source cell", value: `PaleoDEM 0.1° cell at ${fmtLat(r.cellLat)}, ${fmtLon(r.cellLon)}: ${fmtM(r.source)}` },
     { label: "Height here", value: fmtM(r.h) },
     { label: "Smooth surface", value: `${fmtM(r.smooth)} (interpolated from the DEM, no invented detail)` },
-    { label: "Generated detail", value: `${r.generated >= 0 ? "+" : "−"}${Math.abs(r.generated).toFixed(1)} m (${Math.round(r.strength * 100)}% of the local amplitude, ±${r.amp.toFixed(0)} m)` },
+    { label: "Generated detail", value: `${r.generated >= 0 ? "+" : "−"}${Math.abs(r.generated).toFixed(1)} m (local amplitude ±${r.amp.toFixed(0)} m); shape reads as ${r.strength < 0.25 ? "data below 20 m and 25% of the amplitude" : r.strength < 0.75 ? "inferred from 20 m or 25% of the amplitude" : "generated from 60 m or 75% of the amplitude"}` },
     { label: "Terrain class", value: r.className },
   ];
   const b = r.biome, c = b.climate;
@@ -809,6 +1160,7 @@ export function terrainCard(r: InspectResult, water: boolean, aftermath: Afterma
   }
   lines.push(
     { label: "Temperature", value: `${c.temperatureC.toFixed(1)} °C mean annual (${tSrc})` },
+    ...(params?.gmst_scotese && params.gmst_judd ? [{ label: "Global mean", value: gmstLine(params) }] : []),
     { label: "Precipitation", value: `${Math.round(c.precipMmYr).toLocaleString("en-GB")} mm/yr (model: HadCM3L, not proxy-adjusted) · ${c.aridity < 0.5 ? "desert" : c.aridity < 1 ? "semi-arid" : "humid"} by the Köppen threshold` },
   );
   if (aftermath?.phase === "impactWinter") {
@@ -855,6 +1207,16 @@ function plantSource(m: import("../biome/plants").PlantMix): string {
 const pbdbOcc = (id: number) => `https://paleobiodb.org/data1.2/occs/single.json?id=${id}&show=class,coords,env`;
 const pbdbRef = (id: number) => `https://paleobiodb.org/data1.2/refs/single.json?id=${id}&show=both`;
 
+/** "1 per 56 km²" for sparse animals, "12 per km²" for common ones. */
+export function fmtDensity(perKm2: number): string {
+  if (!(perKm2 > 0)) return "—";
+  return perKm2 >= 1 ? `${perKm2 < 10 ? perKm2.toFixed(1) : Math.round(perKm2).toLocaleString("en-GB")} per km²` : `1 per ${fmtArea(1 / perKm2)}`;
+}
+
+export function fmtCount(n: number): string {
+  return n >= 10 ? Math.round(n).toLocaleString("en-GB") : n >= 1 ? n.toFixed(1) : n >= 0.01 ? n.toFixed(2) : "< 0.01";
+}
+
 export function animalCard(a: LiveAnimal): InfoCard {
   const t = a.taxon;
   const level = levelOf("animal", a.flags);
@@ -865,7 +1227,9 @@ export function animalCard(a: LiveAnimal): InfoCard {
     { label: "Name", value: `${t.name} (${t.rank})${t.species.length ? `: ${t.species.slice(0, 3).join(", ")}${t.species.length > 3 ? "…" : ""}` : ""}` },
     { label: "Evidence", value: `${t.evidence.count} PBDB occurrence${t.evidence.count === 1 ? "" : "s"}, nearest ${Math.round(t.evidence.nearestKm)} km${t.evidence.straddlesKpg ? "; an age range crosses the K–Pg boundary" : ""}` },
     { label: "Size", value: `${a.lengthM.toFixed(1)} m long (${t.lengthSource === "rule" ? "from a curated rule" : "body-plan default"}), ~${t.massKg.toLocaleString("en-GB")} kg (estimated)` },
-    { label: "Density", value: `realistic ≈ 1 per ${fmtArea(1 / Math.max(t.realisticPerKm2, 1e-9))} (Damuth 1981; Marshall et al. 2021)${boosted ? ". Shown for illustration (representative fauna)." : ""}` },
+    { label: "Density", value: `where it lived, ≈ ${fmtDensity(t.realisticPerKm2)} (one species of this mass; Damuth 1981; Marshall et al. 2021)` },
+    { label: "Presence here", value: `${presenceLabel(t.presence)} (${presencePct(t.presence)}, provisional: from how near, well-dated and environment-matched its fossils are)` },
+    { label: "On this tile", value: `≈ ${fmtCount(t.expected)} expected in ${TILE_AREA_KM2} km² at realistic density${boosted ? "; shown anyway for illustration (representative fauna)" : ""}` },
   ];
   const links = [{ label: "PBDB occurrence", url: pbdbOcc(t.evidence.occurrenceIds[0]!) }];
   if (t.evidence.refIds[0] !== undefined) links.push({ label: "Reference", url: pbdbRef(t.evidence.refIds[0]) });
@@ -892,4 +1256,10 @@ export function plantCard(p: PlantPick, aftermath: Aftermath | null): InfoCard {
   }
   return { kind: "plant", title: name.charAt(0).toUpperCase() + name.slice(1), level, levelName: LEVEL_NAMES[level], lines,
     flags: flagNames(flags & (F.PLANTS_FROM_DATA | F.PLANTS_FROM_PRIOR | F.AFTERMATH_RECON)).map((n) => flagCard(n)), lat: p.lat, lon: p.lon };
+}
+
+/** Generated look: no haze at or below 24 °C mean annual temperature, full haze at 36 °C. */
+export function hazeFromTemperature(tC: number): number {
+  const t = Math.min(1, Math.max(0, (tC - 24) / 12));
+  return t * t * (3 - 2 * t);
 }

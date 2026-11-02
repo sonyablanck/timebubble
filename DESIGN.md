@@ -70,7 +70,7 @@ This is the project's main point of difference from existing tools, and it is wh
 | Paleobiology Database (PBDB) API | Plant and animal occurrences: modern lat/lng, age range, taxonomy, environment | CSV/JSON | CC0, as stated in PBDB's download metadata since at least Nov 2025 (previously CC BY 4.0); we credit it either way and record the licence each download states |
 | Mean annual temperature, version scotese02a_v21321 (same 2024 record, item 6a1; identical to Scotese 2022) | Temperature per slice, 1°, >100 stage-level intervals; HadCM3L adjusted to proxies (Scotese et al. 2021; Valdes, Scotese and Lunt 2021) | List-format CSV, 361×181 node-registered | CC BY 4.0 |
 | Mean annual precipitation, version scotese_02 (same record, item 6b2) | Moisture per slice (biome); raw HadCM3L model output, not proxy-adjusted (Valdes, Scotese and Lunt 2021) | netCDF, 361×181 node-registered (185–255 Ma files padded to 366 columns). Units are **mm/day**, not the mm/month the record's explanation states (area means 3.2–4.1; Earth today ≈ 2.7 mm/day) | CC BY 4.0 |
-| Published climate values (Judd et al. 2024; Brugger et al. 2017; Vajda et al. 2004; others in `REFERENCES.md`) | Uncertainty notes, aftermath constants, test benchmarks | Hand-entered with citations in `climate_by_age.json` | Facts with citation; check PhanDA repo licence before copying its files |
+| Published climate values (Judd et al. 2024; Brugger et al. 2017; Vajda et al. 2004; others in `REFERENCES.md`) | Uncertainty notes, aftermath constants, test benchmarks | Hand-entered with citations in `climate_by_age.json` | Facts with citation. The PhanDA repository has no licence file, so only its per-stage values are stored, cited |
 
 **Software dependencies**
 
@@ -153,7 +153,7 @@ Accuracy constraints the rules must respect:
 - Pull occurrences from the tile's bin and its neighbours, weighted by distance and environment match.
 - Taxa found within a defined radius are tagged `data`; taxa borrowed from further away or a neighbouring slice are tagged `inferred`.
 - Each taxon is rendered via its body-plan model with size and colour parameters. Colour is always tagged `generated`.
-- Fossil occurrences decide **presence**, not abundance (preservation favours large and water-side animals). Abundance comes from body mass via Damuth's law (Damuth 1981), calibrated to the *T. rex* estimate of ~1 adult per 100 km² (Marshall et al. 2021). Realistically, most 16 km² tiles hold no large predator, so a "representative fauna" setting (default on) guarantees one group of each data-backed taxon, flagged as density-boosted. A field-guide panel lists the full tile roster.
+- Fossil occurrences decide **presence**, not abundance (preservation favours large and water-side animals). Abundance comes from body mass via Damuth's law (Damuth 1981), a per-species relation calibrated to the *T. rex* estimate of ~1 adult per 100 km² (Marshall et al. 2021), times a provisional presence estimate from the strength of the fossil evidence. Realistically, most 16 km² tiles hold no large predator, so a "representative fauna" setting (default on) guarantees one group of each data-backed taxon, flagged as density-boosted. A field-guide panel lists the full tile roster.
 - Fauna are ambient (idle and wander loops), with no AI.
 - Clicking any organism opens an info card: name, source tag, a PBDB reference link and the occurrence's original age range.
 
@@ -204,7 +204,7 @@ Accuracy constraints the rules must respect:
 - The Paleobiology Database. Available at: https://paleobiodb.org (licence as stated at download; CC0 since 2025) (Accessed: [date]).
 
 *Papers behind the PaleoDEMs (cited at the dataset's request)*
-- Scotese, C.R., Vérard, C., Burgener, L., Elling, R.P. and Kocsis, A.T. (2024) 'The Cretaceous world: plate tectonics, palaeogeography and palaeoclimate', *Geological Society, London, Special Publications*, 544. doi:10.1144/SP544-2024-28.
+- Scotese, C.R., Vérard, C., Burgener, L., Elling, R.P. and Kocsis, A.T. (2024) 'The Cretaceous world: plate tectonics, palaeogeography and palaeoclimate', *Geological Society, London, Special Publications*, 544, pp. 31–202. doi:10.1144/SP544-2024-28.
 - Kocsis, Á.T. and Scotese, C.R. (2021) 'Mapping paleocoastlines and continental flooding during the Phanerozoic', *Earth-Science Reviews*, 213, 103463. doi:10.1016/j.earscirev.2020.103463.
 
 *Papers behind the temperature and precipitation grids (cited at the dataset's request)*
@@ -218,17 +218,18 @@ Accuracy constraints the rules must respect:
 ## 12. Remaining checks
 
 - ~~Plate model~~ **Resolved 2026-10-31:** v19o_r1d (A12). **Confirmed with fossils 2026-11-01:** terrestrial-environment PBDB occurrences rotated with v19o land on 1° DEM land 67–99% of the time per slice, and on land or shelf above −200 m 88–99.7% (`pipeline/checks/fossil_land_check.py`).
-- Compare the derived 1° globe against the record's 1° CSV (item 5b) for one slice.
-- The climate grids come from HadCM3L runs on the palaeogeography of Valdes et al. (2021), not the 2024 DEMs, so coastlines differ slightly. Measure the land/sea disagreement per slice and report it in the climate sidecar.
+- Compare the derived 1° globe against the record's 1° CSV (item 5b) for one slice. *Needs the raw download in `pipeline/raw`, which is not in the current working copy.*
+- The climate grids come from HadCM3L runs on the palaeogeography of Valdes et al. (2021), not the 2024 DEMs, so coastlines differ slightly. Measure the land/sea disagreement per slice and report it in the climate sidecar. *Needs the HadCM3L land mask from the raw climate files (not in the current working copy).*
 - ~~Climate interval ages~~ **Done 2026-10-31:** every slice 65–250 Ma has an exact-age temperature and precipitation file; real-data quirks (legend anchors at 90°N in the temperature CSVs, varying pole rows, NaN padding columns, float32 coordinates in the 100 Ma DEM, mm/day units) are handled and tested.
 - Ask the dataset authors whether the 65 Ma temperature grid deliberately represents K–Pg cooling, and confirm the precipitation units (mm/day, not mm/month as stated).
-- Confirm pyGPlates 1.0's bundled licence file (conda-forge lists GPL-2.0-only).
-- Check the PhanDA (Judd et al. 2024) GitHub repository licence.
-- Confirm the unverified page ranges listed at the end of `REFERENCES.md`.
+- ~~pyGPlates licence~~ **Confirmed 2026-11-02:** the pyGPlates 1.0.0 wheel's licence metadata is GPL version 2 only ("not any later version"). It stays a pipeline-only dependency, not shipped.
+- ~~PhanDA licence~~ **Checked 2026-11-02:** the repository has no licence file. Only the per-stage GMST percentile values are stored (`pipeline/climate_by_age.json`), cited to Judd et al. (2024); nothing else is redistributed. Ask the authors for explicit permission when emailing them.
+- ~~Reference details~~ **Done 2026-11-02:** volumes, issues, pages and DOIs confirmed for the ten entries flagged in `REFERENCES.md` (Druckenmiller et al. 2021 corrected to pp. 3469–3478.e5; Scotese et al. 2024 given pp. 31–202). Still open: the Zenodo creators list for scotese2024data.
 - ~~Fossil pipeline on real data~~ **Done 2026-11-01** (see the check above; 3 non-avian dinosaurs excluded from the 65 Ma slice). Still to do: extend `rules.csv` for the remaining unmapped groups (lycopsids, gnetophytes, tracks and eggs, dinosaurs recorded without a family) and source the size hints.
-- Build `climate_by_age.json` (pipeline §1d): ice flags now live in `src/biome/climate.ts`, and the Judd et al. (2024) ΔGMST line on info cards waits for it.
+- ~~Build `climate_by_age.json`~~ **Done 2026-11-02** (pipeline §1d): `pipeline/curate_climate.py` writes 38 slices with the grid's area-mean GMST, the PhanDA stage percentiles, ice flags and the 65 Ma aftermath parameters, every number referenced. Terrain cards show both global means and their difference.
 - Check the Impact Winter light curve and its spatial pattern against Brugger, Feulner and Petri (2017); v1 cools uniformly by 26 °C at peak.
 - Source the ecology placeholders: body-plan default lengths and masses (`src/ecology/roster.ts`) and per-taxon size hints in `pipeline/rules.csv`; calibrate the herbivore and omnivore density multiples (×10, ×3 of the carnivore constant) against Damuth (1981).
-- Calibrate terrain provenance levels. Strength is |generated| / the class amplitude, so in orogens (600 m) a point with up to ~150 m of invented relief still reads `data`. Consider an absolute floor (e.g. > 20 m generated is at least `inferred`) before the overlay is used for research figures.
-- Animal integument (pseudocode render §8): the drawn models have none. Build the clade table (feathers, filaments, scales) from published integument reviews, cite it in `REFERENCES.md`, and tag it `inferred`.
-- Review the animal density display: each taxon's "realistic" density is Damuth's trophic-level density for its body mass times its evidence share of that trophic level, so a genus with one distant occurrence reads as very rare (e.g. ≈ 1 per 56,000 km² for *Furcatoceratops* at Hell Creek, 70 Ma). Decide whether that share is the right reading before the figures are quoted.
+- ~~Calibrate terrain provenance levels~~ **Done 2026-11-02:** an absolute floor joins the relative one: ≥ 20 m of invented relief is at least `inferred`, ≥ 60 m `generated` (provenance amendment). Still worth checking by eye on a few orogens before figures are published.
+- ~~Overlay colour-blind check~~ **Done 2026-11-02:** Machado et al. (2009) full-severity simulation of the Okabe–Ito overlay colours gives CIEDE2000 differences ≥ 41 for normal vision, but the closest pairs drop to 12 (data/generated, protanopia) and 11 (inferred/generated, tritanopia). They stay distinguishable because each level also has its own pattern (data plain, inferred dots, generated hatching) and lightness, and the legend names the levels. No change needed.
+- Animal integument (pseudocode render §8): the drawn models (smooth hulls since 2026-11-02) have none. Build the clade table (feathers, filaments, scales) from published integument reviews, cite it in `REFERENCES.md`, and tag it `inferred`.
+- ~~Animal density display~~ **Fixed 2026-11-02:** densities were split among all taxa of a trophic level by evidence share, which Damuth's per-species law does not support (*Furcatoceratops* at Hell Creek read ≈ 1 per 56,000 km²; it is now ≈ 1 per 8 km² where it lived). Each taxon now gets Damuth's per-species density plus a separate presence estimate, `1 − exp(−evidence weight)` (ecology §3 amendment). Still to do: test that presence reading against a sampled assemblage (e.g. Hell Creek quarry counts) before quoting expected counts, and limit co-occurrence within the 5 Myr slice window, so taxa that never overlapped in time aren't shown together at full density.

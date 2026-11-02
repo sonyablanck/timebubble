@@ -3,7 +3,7 @@ import { EcologyIndex } from "./ecology";
 import { DataError } from "./errors";
 import { fetchInt16, fetchJson } from "./fetch";
 import { Grid } from "./grid";
-import type { ClimateMeta, ClimateParams, Fetcher, GridSpec, Manifest, Occurrence, SliceEntry } from "./types";
+import type { ClimateMeta, ClimateParams, Credits, Fetcher, GridSpec, Manifest, Occurrence, SliceEntry } from "./types";
 
 // data/ §1 and §5. One DataStore per thread (main thread, terrain worker); no shared state.
 
@@ -50,6 +50,7 @@ export class DataStore {
   private readonly chunks: ChunkCache;
   private manifestPromise: Promise<Manifest> | null = null;
   private climateParamsPromise: Promise<ClimateParams[] | null> | null = null;
+  private creditsPromise: Promise<Credits | null> | null = null;
   /** Current slice first, then the previous one (data/ §5: keep current + previous). */
   private handles: SliceHandle[] = [];
 
@@ -96,6 +97,16 @@ export class DataStore {
     this.handles = [handle, ...this.handles.filter((h) => h !== handle)].slice(0, 2);
     if (previous && previous !== handle) previous.releaseEcology(); // ecology: current slice only
     return handle;
+  }
+
+  /** credits.json (pipeline §6): datasets, papers, hand-entered values, software, resolved references. */
+  credits(): Promise<Credits | null> {
+    this.creditsPromise ??= (async () => {
+      const m = await this.manifest();
+      if (!m.credits) return null;
+      return fetchJson<Credits>(this.fetcher, this.url(m.credits, m.data_version));
+    })();
+    return this.creditsPromise;
   }
 
   /** climate_by_age.json, or null until it has been curated (pipeline §1d). */

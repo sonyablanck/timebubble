@@ -1,7 +1,8 @@
 import type { CameraView, GlobeLayer } from "../globe";
 
 // ui/ §0 and provenance/ §5: the view lives in the URL, so a link reopens it.
-// This covers the globe screen; walk-mode fields join when terrain/ exists.
+// The globe view always; in walk mode also where you stand, which way you look, flight, the
+// overlay mode, the Aftermath phase and the representative-fauna setting (provenance §5).
 
 export interface GlobeViewState {
   age: number;
@@ -9,7 +10,21 @@ export interface GlobeViewState {
   layers: GlobeLayer[];
   exaggeration: number;
   pin?: { lat: number; lon: number };
+  walk?: WalkViewState;
 }
+
+export interface WalkViewState {
+  lat: number; lon: number;          // palaeo-coordinates of the viewer
+  headingDeg: number; pitchDeg: number;
+  fly: boolean; altitudeM?: number;  // altitude only when flying (walking snaps to the ground)
+  overlay: "off" | "source" | "focus" | "evidence";
+  focus?: string;
+  aftermath?: { phase: "impactWinter" | "fernSpike"; year: number } | null;
+  representativeFauna: boolean;
+}
+
+const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
+const OVERLAYS = ["off", "source", "focus", "evidence"] as const;
 
 const ALL_LAYERS: GlobeLayer[] = ["relief", "temperature", "precipitation", "fossils", "graticule", "provenance"];
 const r2 = (x: number) => Math.round(x * 100) / 100;
@@ -23,7 +38,16 @@ export function viewToUrl(v: GlobeViewState): string {
   q.set("layers", ALL_LAYERS.filter((l) => v.layers.includes(l)).join(","));
   q.set("ex", String(Math.round(v.exaggeration)));
   if (v.pin) q.set("pin", `${r2(v.pin.lat)},${r2(v.pin.lon)}`);
-  return `?${q.toString()}`;
+  if (v.walk) {
+    const w = v.walk;
+    q.set("walk", `${r4(w.lat)},${r4(w.lon)}`);
+    q.set("look", `${Math.round(w.headingDeg)},${Math.round(w.pitchDeg)}`);
+    if (w.fly) q.set("fly", String(Math.round(w.altitudeM ?? 0)));
+    if (w.overlay !== "off") q.set("ov", w.overlay === "focus" && w.focus ? `focus:${w.focus}` : w.overlay);
+    if (w.aftermath) q.set("af", w.aftermath.phase === "impactWinter" ? `iw:${w.aftermath.year}` : "fs");
+    if (!w.representativeFauna) q.set("rf", "0");
+  }
+  return `?${q.toString().replace(/%2C/g, ",")}`;   // commas are legal in a query; keep links readable
 }
 
 /** Parse a query string; anything missing or malformed is left out (callers use defaults). */
@@ -46,5 +70,23 @@ export function viewFromUrl(search: string): Partial<GlobeViewState> {
   if (ex !== undefined) out.exaggeration = ex;
   const pin = q.get("pin")?.split(",").map(Number);
   if (pin && pin.length === 2 && pin.every(Number.isFinite)) out.pin = { lat: pin[0]!, lon: pin[1]! };
+  const walk = q.get("walk")?.split(",").map(Number);
+  if (walk && walk.length === 2 && walk.every(Number.isFinite) && Math.abs(walk[0]!) <= 90) {
+    const look = (q.get("look") ?? "0,0").split(",").map(Number);
+    const fly = num("fly");
+    const ov = q.get("ov") ?? "off";
+    const [ovMode, focus] = ov.split(":") as [string, string | undefined];
+    const af = q.get("af");
+    const iw = af?.startsWith("iw:") ? Number(af.slice(3)) : NaN;
+    out.walk = {
+      lat: walk[0]!, lon: walk[1]!,
+      headingDeg: Number.isFinite(look[0]) ? look[0]! : 0, pitchDeg: Number.isFinite(look[1]) ? Math.max(-89, Math.min(89, look[1]!)) : 0,
+      fly: fly !== undefined, ...(fly !== undefined ? { altitudeM: fly } : {}),
+      overlay: (OVERLAYS as readonly string[]).includes(ovMode) ? ovMode as WalkViewState["overlay"] : "off",
+      ...(focus ? { focus } : {}),
+      aftermath: af === "fs" ? { phase: "fernSpike", year: 0 } : Number.isFinite(iw) ? { phase: "impactWinter", year: Math.max(0, Math.min(30, iw)) } : null,
+      representativeFauna: q.get("rf") !== "0",
+    };
+  }
   return out;
 }

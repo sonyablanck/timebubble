@@ -62,6 +62,20 @@ export function psi(s: number, t: number): number {
   return 900 * a * a * b * b;
 }
 
+/**
+ * Generated relief (m) at which terrain stops reading as `data`, whatever the local amplitude:
+ * provenance strength is the larger of |generated| / amplitude and |generated| / ABS_GENERATED_M,
+ * so ≥ 20 m of invented relief is at least `inferred` (strength 0.25) and ≥ 60 m is `generated`
+ * (0.75). Without the absolute term, orogens (amplitude 600 m) let ~150 m of invented relief read
+ * as `data` (calibrated 2026-11-02; DESIGN §12).
+ */
+export const ABS_GENERATED_M = 80;
+
+export function provStrength(generated: number, amp: number): number {
+  const g = Math.abs(generated);
+  return Math.min(1, Math.max(g / Math.max(amp, 1e-6), g / ABS_GENERATED_M));
+}
+
 export interface Base { h: number; dN: number; dE: number } // m, and m/m towards north / east
 
 export interface SurfaceSample {
@@ -71,7 +85,7 @@ export interface SurfaceSample {
   base: number;        // S
   cls: TerrainClass;   // dominant class
   amp: number;         // local detail amplitude, metres
-  strength: number;    // |generated| / amp, 0..1 (provenance gradient)
+  strength: number;    // provStrength: max(|generated| / amp, |generated| / 80 m), 0..1 (provenance gradient)
   flags: number;       // provenance registry bits
   cellLat: number;     // centre of the source cell (for info cards)
   cellLon: number;
@@ -299,7 +313,7 @@ export class Surface {
     const [cellLat, cellLon] = this.cellLatLon(cell.ic, cell.jr, 0.5, 0.5);
     return {
       h, smooth, generated, base: b.h, cls, amp,
-      strength: Math.min(1, Math.abs(generated) / amp), flags,
+      strength: provStrength(generated, amp), flags,
       cellLat, cellLon, source: this.node(cell.ic, cell.jr),
     };
   }

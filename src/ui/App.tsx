@@ -3,10 +3,13 @@ import type { ClimateMeta, DataStore } from "../data";
 import { ariaText, palette, type Globe, type GlobeLayer, type HoverInfo, type Timeline } from "../globe";
 import { GROUP_COLOURS } from "../globe/fossils";
 import { formatCoast, formatElevation, formatLatLon, formatPrecip } from "./format";
-import { viewToUrl } from "./url";
+import { viewToUrl, type WalkViewState } from "./url";
+import { buildReport, type ProvenanceReport } from "../provenance/report";
 import type { WalkRenderer } from "../render/walk";
 import type { Aftermath } from "../biome/climate";
 import { LoadingScreen, WalkHud } from "./Walk";
+import { About, Help, Intro, SettingsPanel, type PanelKind } from "./Panels";
+import { applyTextScale, loadSettings, markIntroSeen, seenIntro, type Settings } from "./settings";
 
 // ui/ §1b (globe HUD), §9 (accessibility). A first slice of the UI module:
 // slice label, time slider, layers, exaggeration, hover readout and "Walk here".
@@ -23,7 +26,7 @@ const TOGGLEABLE: GlobeLayer[] = ["temperature", "precipitation", "fossils", "gr
 
 type Screen = { kind: "globe" } | { kind: "loading"; label: string; fraction: number; place: string } | { kind: "walk" };
 
-export function App({ globe, store, getWalk }: { globe: Globe; store: DataStore; getWalk?: () => WalkRenderer }) {
+export function App({ globe, store, getWalk, initialWalk }: { globe: Globe; store: DataStore; getWalk?: () => WalkRenderer; initialWalk?: WalkViewState }) {
   const [screen, setScreen] = useState<Screen>({ kind: "globe" });
   const [aftermath, setAftermath] = useState<Aftermath | null>(null);
   const timeline: Timeline = globe.timeline;
@@ -37,17 +40,25 @@ export function App({ globe, store, getWalk }: { globe: Globe; store: DataStore;
   const [climate, setClimate] = useState<ClimateMeta | null>(null);
   const [fossilsAvailable, setFossilsAvailable] = useState<boolean | null>(null);
   const urlTimer = useRef<number | undefined>(undefined);
+  const walking = useRef(false);
+  const [settings, setSettings] = useState<Settings>(() => loadSettings());
+  // first visit, no view in the link: the intro (ui §1a)
+  const [panel, setPanel] = useState<PanelKind | null>(() => (!seenIntro() && !initialWalk && !location.search.includes("age=") ? "intro" : null));
 
   const tick = timeline.ticks[index]!;
+
+  /** The link for the current view: the globe, plus the walk view while walking (provenance §5). */
+  const currentUrl = () => viewToUrl({
+    age: globe.currentAge, camera: globe.getView(), layers: globe.getLayers(),
+    exaggeration: globe.getExaggeration(), pin: picked ? { lat: picked.lat, lon: picked.lon } : undefined,
+    ...(walking.current && getWalk ? { walk: getWalk().viewState() } : {}),
+  });
 
   // keep the URL in step with the view (debounced, replaceState)
   const syncUrl = () => {
     window.clearTimeout(urlTimer.current);
     urlTimer.current = window.setTimeout(() => {
-      const url = viewToUrl({
-        age: globe.currentAge, camera: globe.getView(), layers: globe.getLayers(),
-        exaggeration: globe.getExaggeration(), pin: picked ? { lat: picked.lat, lon: picked.lon } : undefined,
-      });
+      const url = currentUrl();
       history.replaceState(null, "", url);
     }, 500);
   };
@@ -100,25 +111,40 @@ export function App({ globe, store, getWalk }: { globe: Globe; store: DataStore;
   };
 
   const backToGlobe = () => {
+    walking.current = false;
+    syncUrl();
     showWalkCanvas(false);
     globe.setActive(true);
     setScreen({ kind: "globe" });
   };
 
   const walk = async () => {
-    if (!picked || !getWalk) return;
-    if (Math.abs(picked.lat) > 89.5) return;
-    await globe.flyTo(picked.lat, picked.lon);
-    globe.enterTile(picked.lat, picked.lon);
-    const place = `${formatLatLon(picked.lat, picked.lon)} (palaeo)`;
+    if (!picked) return;
+    await enterWalk(picked.lat, picked.lon, null);
+  };
+
+  /** Enter walk mode at a palaeo-position; `view` restores a saved look, flight and overlay (from a link). */
+  const enterWalk = async (lat: number, lon: number, view: WalkViewState | null) => {
+    if (!getWalk) return;
+    if (Math.abs(lat) > 89.5) return;
+    const af = view ? (view.aftermath && globe.timeline.ticks[globe.currentIndex]!.afterExtinction ? view.aftermath : null) : (tick.afterExtinction ? aftermath : null);
+    if (view) setAftermath(af);
+    await globe.flyTo(lat, lon);
+    globe.enterTile(lat, lon);
+    const place = `${formatLatLon(lat, lon)} (palaeo)`;
     setScreen({ kind: "loading", label: "Starting the terrain generator", fraction: 0, place });
     globe.setActive(false);
     showWalkCanvas(true);
     const w = getWalk();
+    w.setClimateParams(await store.slice(globe.currentAge).then((h) => h.climate()).catch(() => null));
     try {
-      await w.enter({ sliceAge: globe.currentAge, lat: picked.lat, lon: picked.lon, aftermath: tick.afterExtinction ? aftermath : null },
+      await w.enter({ sliceAge: globe.currentAge, lat, lon, aftermath: af },
         (label, fraction) => setScreen({ kind: "loading", label, fraction, place }));
+      w.applySettings(settings);
+      if (view) w.applyView(view);
+      walking.current = true;
       setScreen({ kind: "walk" });
+      syncUrl();
       (document.getElementById("walk") as HTMLCanvasElement | null)?.focus();
     } catch (e) {
       console.error(e);
@@ -128,8 +154,45 @@ export function App({ globe, store, getWalk }: { globe: Globe; store: DataStore;
   };
 
   useEffect(() => {
-    if (getWalk) getWalk().onExit(backToGlobe);
+    applyTextScale(settings.textScale);
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.closest?.("input, textarea, select")) return;
+      if (e.code === "KeyH" || e.key === "?") setPanel((p) => (p === "help" ? null : "help"));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  useEffect(() => {
+    if (!getWalk) return;
+    const w = getWalk();
+    w.onExit(backToGlobe);
+    // while walking, keep the link pointing at where you are (throttled by the debounce)
+    let last = 0;
+    w.onState(() => { const now = performance.now(); if (walking.current && now - last > 1000) { last = now; syncUrl(); } });
+    if (initialWalk) void enterWalk(initialWalk.lat, initialWalk.lon, initialWalk);
+  }, []);
+
+  /** Everything the provenance report needs, gathered from the walk, the store and the URL. */
+  const makeReport = async (): Promise<ProvenanceReport> => {
+    const w = getWalk!();
+    const st = w.debug.state();
+    const v = w.viewState();
+    const eco = w.currentEcology();
+    const h = await store.slice(globe.currentAge);
+    const [manifest, climate] = await Promise.all([store.manifest(), h.climateMeta().catch(() => null)]);
+    return buildReport({
+      view: {
+        url: `${location.origin}${location.pathname}${currentUrl()}`,
+        sliceAge: globe.currentAge, aftermath: st.aftermath, tile: eco?.tile ?? { row: 0, col: 0 },
+        lat: v.lat, lon: v.lon, altitudeM: st.altitudeM, headingDeg: st.headingDeg, pitchDeg: st.pitchDeg, mode: st.mode,
+        overlay: { mode: st.overlayMode, focus: st.overlayMode === "focus" ? st.focusFlag : null },
+        representativeFauna: w.representativeFauna,
+      },
+      manifest: manifest as unknown as Parameters<typeof buildReport>[0]["manifest"],
+      climate, roster: eco?.ecology.roster ?? [], plantMix: eco?.plantMix ?? null, shares: st.shares,
+    });
+  };
 
 
   const legend = useMemo(() => {
@@ -138,14 +201,40 @@ export function App({ globe, store, getWalk }: { globe: Globe; store: DataStore;
     return null;
   }, [layers, climate]);
 
+  const openPanel = (p: PanelKind) => {
+    if (p === "settings" && getWalk && walking.current) {
+      const w = getWalk();   // L and the field guide change these too: start from what's live
+      setSettings((s) => ({ ...s, shadows: w.shadows, representativeFauna: w.representativeFauna }));
+    }
+    if (document.pointerLockElement) document.exitPointerLock();
+    setPanel(p);
+  };
+  const changeSettings = (s: Settings) => {
+    setSettings(s);
+    if (getWalk && walking.current) getWalk().applySettings(s);
+  };
+  const panels = (
+    <>
+      <nav class="top-buttons" aria-label="Help and settings">
+        <button type="button" class="secondary small" onClick={() => openPanel("help")} title="Help (H)">Help</button>
+        <button type="button" class="secondary small" onClick={() => openPanel("settings")}>Settings</button>
+        <button type="button" class="secondary small" onClick={() => openPanel("about")}>About &amp; credits</button>
+      </nav>
+      {panel === "intro" && <Intro onStart={() => { markIntroSeen(); setPanel(null); }} onAbout={() => { markIntroSeen(); setPanel("about"); }} />}
+      {panel === "about" && <About store={store} age={tick.age} onClose={() => setPanel(null)} />}
+      {panel === "help" && <Help onClose={() => setPanel(null)} onAbout={() => setPanel("about")} />}
+      {panel === "settings" && <SettingsPanel value={settings} onChange={changeSettings} onClose={() => setPanel(null)} />}
+    </>
+  );
+
   if (screen.kind === "loading") {
-    return <div class="hud"><LoadingScreen label={screen.label} fraction={screen.fraction} sliceLabel={tick.label} place={screen.place} /></div>;
+    return <><div class="hud"><LoadingScreen label={screen.label} fraction={screen.fraction} sliceLabel={tick.label} place={screen.place} /></div>{panels}</>;
   }
   if (screen.kind === "walk" && getWalk) {
-    return <WalkHud walk={getWalk()} sliceLabel={tick.label} onBack={() => getWalk().exit()} />;
+    return <><WalkHud walk={getWalk()} sliceLabel={tick.label} onBack={() => getWalk().exit()} makeReport={makeReport} />{panels}</>;
   }
 
-  return (
+  return (<>
     <div class="hud">
       <header class="hud-top">
         <h1 class="slice-label">
@@ -228,6 +317,7 @@ export function App({ globe, store, getWalk }: { globe: Globe; store: DataStore;
       <TimeSlider timeline={timeline} index={index} onChange={(i) => void globe.setSlice(timeline.ticks[i]!.age)}
         aftermath={aftermath} setAftermath={setAftermath} />
     </div>
+    {panels}</>
   );
 }
 
