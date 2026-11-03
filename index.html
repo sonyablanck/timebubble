@@ -8,8 +8,8 @@
   </head>
   <body>
     <main class="stage">
-      <canvas id="globe" aria-label="Globe of the Earth at the selected time. Drag to rotate, scroll to zoom, click to pick a place. Keys: arrows rotate, plus and minus zoom, [ and ] change the time slice."></canvas>
-      <canvas id="walk" hidden aria-label="Walk mode: first-person view of the generated landscape. Click to capture the mouse, W A S D to move, Shift to run, Space to hop, F to fly, P for the provenance overlay, I or click to inspect, Escape to release the mouse and Escape again to return to the globe."></canvas>
+      <canvas id="globe" tabindex="0" role="application" aria-roledescription="globe" aria-label="Globe of the Earth at the selected time. Drag to rotate, scroll to zoom, click to pick a place. Keys: arrows rotate, plus and minus zoom, [ and ] change the time slice, Enter picks the place at the centre of the view."></canvas>
+      <canvas id="walk" hidden tabindex="0" role="application" aria-roledescription="landscape" aria-label="Walk mode: first-person view of the generated landscape. Click to capture the mouse, W A S D to move, Shift to run, Space to hop, F to fly, P for the provenance overlay, I or click to inspect, Escape to release the mouse and Escape again to return to the globe."></canvas>
       <div id="app"><p class="loading">Loading Time Bubble…</p></div>
     </main>
     <script type="module" src="/src/main.tsx"></script>

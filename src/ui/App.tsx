@@ -10,6 +10,12 @@ import type { Aftermath } from "../biome/climate";
 import { LoadingScreen, WalkHud } from "./Walk";
 import { About, Help, Intro, SettingsPanel, type PanelKind } from "./Panels";
 import { applyTextScale, loadSettings, markIntroSeen, seenIntro, type Settings } from "./settings";
+import { PlaceSearch } from "./PlaceSearch";
+import type { PlacePosition, PlaceResult } from "../places";
+
+/** A searched modern place and where it is on the current slice (places/ §3). */
+interface ModernPlace { name: string; detail: string; lat: number; lon: number; pos: PlacePosition }
+type PlaceRef = { name: string; lat: number; lon: number };
 
 // ui/ §1b (globe HUD), §9 (accessibility). A first slice of the UI module:
 // slice label, time slider, layers, exaggeration, hover readout and "Walk here".
@@ -26,7 +32,9 @@ const TOGGLEABLE: GlobeLayer[] = ["temperature", "precipitation", "fossils", "gr
 
 type Screen = { kind: "globe" } | { kind: "loading"; label: string; fraction: number; place: string } | { kind: "walk" };
 
-export function App({ globe, store, getWalk, initialWalk }: { globe: Globe; store: DataStore; getWalk?: () => WalkRenderer; initialWalk?: WalkViewState }) {
+export function App({ globe, store, getWalk, initialWalk, initialPlace }: {
+  globe: Globe; store: DataStore; getWalk?: () => WalkRenderer; initialWalk?: WalkViewState; initialPlace?: PlaceRef;
+}) {
   const [screen, setScreen] = useState<Screen>({ kind: "globe" });
   const [aftermath, setAftermath] = useState<Aftermath | null>(null);
   const timeline: Timeline = globe.timeline;
@@ -37,6 +45,9 @@ export function App({ globe, store, getWalk, initialWalk }: { globe: Globe; stor
   // a pin from the URL reopens its panel, so a shared link lands one click from walking
   const [picked, setPicked] = useState<HoverInfo | null>(() => { const p = globe.getPin(); return p ? globe.hoverInfo(p.lat, p.lon) : null; });
   const [notice, setNotice] = useState<string | null>(null);
+  const [place, setPlace] = useState<ModernPlace | null>(null);
+  const placeRef = useRef<ModernPlace | null>(null);
+  placeRef.current = place;
   const [climate, setClimate] = useState<ClimateMeta | null>(null);
   const [fossilsAvailable, setFossilsAvailable] = useState<boolean | null>(null);
   const urlTimer = useRef<number | undefined>(undefined);
@@ -51,6 +62,7 @@ export function App({ globe, store, getWalk, initialWalk }: { globe: Globe; stor
   const currentUrl = () => viewToUrl({
     age: globe.currentAge, camera: globe.getView(), layers: globe.getLayers(),
     exaggeration: globe.getExaggeration(), pin: picked ? { lat: picked.lat, lon: picked.lon } : undefined,
+    place: placeRef.current ? { name: placeRef.current.name, lat: placeRef.current.lat, lon: placeRef.current.lon } : undefined,
     ...(walking.current && getWalk ? { walk: getWalk().viewState() } : {}),
   });
 
@@ -65,7 +77,7 @@ export function App({ globe, store, getWalk, initialWalk }: { globe: Globe; stor
 
   useEffect(() => {
     globe.onHover(setHover);
-    globe.onPick((info) => { setPicked(info); setNotice(null); });
+    globe.onPick((info) => { setPicked(info); setNotice(null); setPlace(null); });   // a click replaces a searched place
     globe.onViewChange(() => syncUrl());
     globe.onFossilsLoaded((ok) => {
       setFossilsAvailable(ok);
@@ -92,11 +104,44 @@ export function App({ globe, store, getWalk, initialWalk }: { globe: Globe; stor
     });
   }, []);
 
-  useEffect(() => syncUrl(), [layers, ex, picked]);
+  useEffect(() => syncUrl(), [layers, ex, picked, place]);
 
-  // refresh the picked point's values when the slice changes (same place, new world)
+  /** Pin a modern place where its plate puts it on the current slice; `fly` turns the globe to it. */
+  const showPlace = async (r: PlaceRef & { detail?: string }, fly: boolean) => {
+    setNotice(null);
+    let index;
+    try { index = await store.places(); } catch (e) {
+      setNotice(`Couldn't load the place lookup: ${e instanceof Error ? e.message : e}`);
+      return;
+    }
+    if (!index) { setNotice("The place lookup hasn't been built for this data (run python -m pipeline.places)."); return; }
+    const pos = index.locate(r.lat, r.lon, globe.currentAge);
+    setPlace({ name: r.name, detail: r.detail ?? "", lat: r.lat, lon: r.lon, pos });
+    if (pos.status === "ok") {
+      globe.pin(pos.lat, pos.lon, r.name);
+      setPicked(globe.hoverInfo(pos.lat, pos.lon));
+      if (fly) {
+        // §9: the result list has gone, so put keyboard focus on the next step rather than losing it
+        requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".walk .buttons button")?.focus());
+        await globe.flyTo(pos.lat, pos.lon, globe.getView().dist);
+      }
+    } else {
+      globe.unpin();
+      setPicked(null);
+      if (fly) requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".walk .buttons button")?.focus());
+    }
+  };
+  const choosePlace = (r: PlaceResult) => void showPlace(r, true);
+  const clearPin = () => { setPicked(null); setPlace(null); globe.unpin(); setNotice(null); };
+
+  // a place from the link (places/ §3)
+  useEffect(() => { if (initialPlace && !initialWalk) void showPlace(initialPlace, false); }, []);
+
+  // the slice changed: a searched place moves with its plate; a clicked point keeps its palaeo-position
   useEffect(() => {
-    if (picked) setPicked(globe.hoverInfo(picked.lat, picked.lon));
+    const p = placeRef.current;
+    if (p) void showPlace(p, false);
+    else if (picked) setPicked(globe.hoverInfo(picked.lat, picked.lon));
   }, [index]);
 
   const toggle = (l: GlobeLayer) => {
@@ -118,6 +163,18 @@ export function App({ globe, store, getWalk, initialWalk }: { globe: Globe; stor
     setScreen({ kind: "globe" });
   };
 
+  // §9: coming back from walk mode, focus lands on the globe instead of being dropped on the page
+  const prevScreen = useRef(screen.kind);
+  useEffect(() => {
+    if (screen.kind === "globe" && prevScreen.current !== "globe") {
+      const g = document.getElementById("globe");
+      const focusGlobe = () => { if (!document.activeElement || document.activeElement === document.body) g?.focus({ preventScroll: true }); };
+      focusGlobe();
+      window.setTimeout(focusGlobe, 100);
+    }
+    prevScreen.current = screen.kind;
+  }, [screen.kind]);
+
   const walk = async () => {
     if (!picked) return;
     await enterWalk(picked.lat, picked.lon, null);
@@ -131,7 +188,8 @@ export function App({ globe, store, getWalk, initialWalk }: { globe: Globe; stor
     if (view) setAftermath(af);
     await globe.flyTo(lat, lon);
     globe.enterTile(lat, lon);
-    const place = `${formatLatLon(lat, lon)} (palaeo)`;
+    const named = placeRef.current?.pos.status === "ok" ? `${placeRef.current.name} · ` : "";
+    const place = `${named}${formatLatLon(lat, lon)} (palaeo)`;
     setScreen({ kind: "loading", label: "Starting the terrain generator", fraction: 0, place });
     globe.setActive(false);
     showWalkCanvas(true);
@@ -241,6 +299,7 @@ export function App({ globe, store, getWalk, initialWalk }: { globe: Globe; stor
           <span class="period-swatch" style={{ background: palette.PERIOD_COLOURS[tick.period] }} aria-hidden="true" />
           {tick.label}
         </h1>
+        <PlaceSearch onChoose={choosePlace} />
       </header>
 
       <section class="panel layers" aria-label="Map layers">
@@ -296,29 +355,55 @@ export function App({ globe, store, getWalk, initialWalk }: { globe: Globe; stor
         )}
       </section>
 
-      <section class="panel readout" aria-live="polite" aria-label="Location readout">
-        {hover ? <Readout info={hover} /> : <p class="muted">Hover over the globe. Click to pick a place.</p>}
-      </section>
+      {/* §9: one right-hand column, so the place panel and the readout can never overlap (150% text, small windows) */}
+      <div class="right-col">
 
-      {picked && (
-        <section class="panel walk" aria-label="Walk here">
-          <h2>{formatLatLon(picked.lat, picked.lon)} <span class="muted">(palaeo)</span></h2>
-          <Readout info={picked} compact />
-          {!picked.isLand && <p class="warn">Mostly water here: you'll start in flight (no swimming or underwater view yet).</p>}
-          {Math.abs(picked.lat) > 89.5 && <p class="warn">Too close to the pole to walk.</p>}
-          <div class="buttons">
-            <button type="button" onClick={walk} disabled={Math.abs(picked.lat) > 89.5}>Walk here</button>
-            <button type="button" class="secondary" onClick={() => { setPicked(null); globe.unpin(); setNotice(null); }}>Close</button>
-          </div>
-          {notice && <p class="notice">{notice}</p>}
+        {place && place.pos.status !== "ok" && (
+          <section class="panel walk" aria-label="Searched place">
+            <h2>{place.name}</h2>
+            {place.pos.status === "not-formed"
+              ? <p>Not on the map at {tick.age} Ma: in the plate model (PALEOMAP v19o_r1d), the crust here only dates from about {Math.round(place.pos.crustFromMa)} Ma (young seafloor, a volcanic island, or a piece of crust added later). {firstSliceNote(timeline, place.pos.crustFromMa)}</p>
+              : <p>This spot isn't inside any plate of the model, so it can't be placed on the old map.</p>}
+            <div class="buttons"><button type="button" class="secondary" onClick={clearPin}>Close</button></div>
+            {notice && <p class="notice">{notice}</p>}
+          </section>
+        )}
+
+        {picked && (
+          <section class="panel walk" aria-label="Walk here">
+            {place && place.pos.status === "ok" && (
+              <p class="place-name"><strong>{place.name}</strong> <span class="muted">today</span> was here at {tick.age} Ma
+                {" "}<span class="badge badge-inferred" title={`Rotated with the PALEOMAP v19o_r1d plate model (plate ${place.pos.plate}); rigid plates, so expect tens to hundreds of km of uncertainty, more near plate edges and mountain belts.`}>inferred</span></p>
+            )}
+            <h2>{formatLatLon(picked.lat, picked.lon)} <span class="muted">(palaeo)</span></h2>
+            <Readout info={picked} compact />
+            {!picked.isLand && <p class="warn">Mostly water here: you'll start in flight (no swimming or underwater view yet).</p>}
+            {Math.abs(picked.lat) > 89.5 && <p class="warn">Too close to the pole to walk.</p>}
+            <div class="buttons">
+              <button type="button" onClick={walk} disabled={Math.abs(picked.lat) > 89.5}>Walk here</button>
+              <button type="button" class="secondary" onClick={clearPin}>Close</button>
+            </div>
+            {notice && <p class="notice">{notice}</p>}
+          </section>
+        )}
+        <section class="panel readout" aria-live="polite" aria-label="Location readout">
+          {hover ? <Readout info={hover} /> : <p class="muted">Hover over the globe. Click to pick a place.</p>}
         </section>
-      )}
+      </div>
 
       <TimeSlider timeline={timeline} index={index} onChange={(i) => void globe.setSlice(timeline.ticks[i]!.age)}
         aftermath={aftermath} setAftermath={setAftermath} />
     </div>
     {panels}</>
   );
+}
+
+/** "It appears from the 85 Ma slice onwards." for crust younger than the current slice (places/ §3). */
+function firstSliceNote(timeline: Timeline, crustFromMa: number): string {
+  const ages = timeline.ticks.map((t) => t.age).filter((a) => a <= crustFromMa);
+  return ages.length
+    ? `It first appears on the ${Math.max(...ages)} Ma slice.`
+    : `That's younger than every slice here (the youngest is ${Math.min(...timeline.ticks.map((t) => t.age))} Ma).`;
 }
 
 function Readout({ info, compact = false }: { info: HoverInfo; compact?: boolean }) {
@@ -348,7 +433,7 @@ function TimeSlider({ timeline, index, onChange, aftermath, setAftermath }: {
       <div class="bands" aria-hidden="true">
         {timeline.bands.map((b) => (
           <div key={b.period} class={`band${b.afterExtinction ? " band--after" : ""}`}
-            style={{ flexGrow: b.toIndex - b.fromIndex + 1, background: palette.PERIOD_COLOURS[b.period] }}>
+            style={{ flexGrow: b.toIndex - b.fromIndex + 1, background: palette.PERIOD_COLOURS[b.period], color: palette.textOn(palette.PERIOD_COLOURS[b.period] ?? "#888888") }}>
             {b.afterExtinction ? "After" : b.period}
           </div>
         ))}

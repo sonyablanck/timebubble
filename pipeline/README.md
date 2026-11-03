@@ -1,6 +1,6 @@
 # pipeline/
 
-Offline Python scripts that turn the raw datasets into the static files in `public/data`. Design: [`PSEUDOCODE.md`](PSEUDOCODE.md). Status: steps 0–5 and the manifest half of 6 are coded. The fossil steps (2–5) are tested on a synthetic PBDB download and the real plate model; they have been run on the real PBDB download of 2026-11-01 (608,780 rows; 516,075 after cleaning; 890,510 occurrence-slices in `public/data/ecology/`, 11 MB gzipped).
+Offline Python scripts that turn the raw datasets into the static files in `public/data`. Design: [`PSEUDOCODE.md`](PSEUDOCODE.md). Status: every step (0–7) is coded and has been run on the real data; step 7 (modern places) was added on 2026-11-03. The fossil steps (2–5) are tested on a synthetic PBDB download and the real plate model; they have been run on the real PBDB download of 2026-11-01 (608,780 rows; 516,075 after cleaning; 890,510 occurrence-slices in `public/data/ecology/`, 11 MB gzipped).
 
 ## Setup
 
@@ -64,6 +64,16 @@ Needs the plate model (item 3a above) and `pip install pygplates` (pipeline only
 
 Reports land next to the intermediate files in `pipeline/raw/`: `pbdb/pbdb_clean_report.json` (rows dropped at each cleaning step), `rotated/rotate_report.json` (per slice: occurrences, non-avian dinosaurs excluded under the K–Pg rule), `classified/classify_report.json`. `pbdb/pbdb_query.json` records the URL, access time and the licence PBDB stated; the manifest copies it for credits.
 
+### Modern places (step 7)
+
+Needs the plate model (item 3a) and pyGPlates. About 2–3 minutes:
+
+```bash
+python -m pipeline.places              # public/data/places/
+python -m pipeline.places --fixture    # also tests/fixtures/places_expected.json (pyGPlates' own answers, for npm test)
+python -m pipeline.build_manifest
+```
+
 ## Outputs
 
 | File | Contents |
@@ -78,6 +88,8 @@ Reports land next to the intermediate files in `pipeline/raw/`: `pbdb/pbdb_clean
 | `terrain/{age}/index.json` | chunk list, grid dimensions, registration |
 | `ecology/{age}.json` | fossil occurrences rotated to the slice, in 5° bins keyed by south-west corner; each with PBDB occurrence and reference numbers, body plan, palaeo-position, age range and age fit |
 | `manifest.json` | every slice with its label, period, grid dimensions and asset paths; `data_version` for cache-busting; the PBDB download's access time and stated licence |
+| `places/units.i16.gz` | 0.1° cell grid (3600 × 1800, row 0 = 90°N), int16 index into `places.json` units (0 = outside every plate) |
+| `places/places.json` | units `[plate_id, crust_from_ma]`; per-slice, per-plate rotation quaternions `[w, x, y, z]`; grid spec; plate model |
 
 All `.i16.gz` files are raw little-endian int16, gzipped with `mtime=0`.
 

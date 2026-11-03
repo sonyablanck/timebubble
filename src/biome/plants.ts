@@ -1,7 +1,7 @@
-// Plant mix (biome §5). With no plant occurrences built yet (pipeline steps 2–5), the mix comes from
-// an age-aware prior, nudged by biome, and is tagged inferred / PLANTS_FROM_PRIOR. The hard age
-// constraints of DESIGN §8 are applied last. The prior is qualitative (broad Mesozoic floral
-// composition) and is meant to be replaced by nearby PBDB plant occurrences where they exist.
+// Plant mix (biome §5): nearby PBDB plant occurrences, weighted by age fit and distance, blended toward
+// an age-aware prior (nudged by biome) where the evidence is thin; with no plant fossils nearby the mix
+// is the prior alone, tagged inferred / PLANTS_FROM_PRIOR. The hard age constraints of DESIGN §8 are
+// applied last. The prior is qualitative (broad Mesozoic floral composition).
 
 import type { OccurrenceNear } from "../data";
 import { Biome } from "./rules";

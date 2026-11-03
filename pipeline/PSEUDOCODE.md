@@ -8,7 +8,7 @@ Conventions:
 - All coordinates are (lat, lon) in degrees, lon in [-180, 180).
 
 
-> **Status (2026-11-01):** steps 0–6 are coded (step 6 and §1d completed 2026-11-02: credits.json and climate_by_age.json), tested and run on the real data (PBDB download of 2026-11-01: 608,780 rows → 516,075 clean; every one fell inside a plate polygon). Real-data findings: PBDB writes `NO_ORDER_SPECIFIED`-style placeholders (read as empty); many dinosaurs are filed as class Reptilia with no order, so dinosaur detection uses every dinosaur family in `rules.csv` plus egg and track families; microfossils and algae get body plan `skip` (counted, not reviewed); 5.4% of occurrence-slices remain unmapped (no taxonomy, dinosaurs without a family, tracks, lycopsids, gnetophytes, liverworts: see `pipeline/review/unmapped_taxa.csv`). Ecology files are gzipped JSON (`ecology/{age}.json.gz`, 11 MB in all, from 204 MB plain). Terrestrial-environment fossils land on 1° DEM land 67–99% of the time, and on land or shelf above −200 m 88–99.7% (`pipeline/checks/fossil_land_check.py`), confirming the plate model choice (DESIGN A12). Settled while coding: the PBDB query uses `min_ma=62.5&max_ma=252.5&timerule=overlap&show=class,coords,env&vocab=pbdb&limit=all&datainfo` (parameter names confirmed against published PBDB download metadata); the `datainfo` header is parsed for the access time and licence. Intermediates are gzipped CSV/JSON rather than parquet (no extra dependency). PBDB's own download metadata has stated **CC0** since at least November 2025 (earlier CC BY 4.0); the pipeline records whatever the actual download says. Non-avian dinosaurs are recognised by Saurischia/Ornithischia and their subgroups at class, order or family level, birds (Aves) kept. `rules.csv` is a starter set; size hints stay blank until sourced.
+> **Status (2026-11-03):** steps 0–7 are coded, tested and run on the real data (step 6 and §1d, credits.json and climate_by_age.json, completed 2026-11-02; step 7, modern places, added 2026-11-03). Fossil steps run on the real data (PBDB download of 2026-11-01: 608,780 rows → 516,075 clean; every one fell inside a plate polygon). Real-data findings: PBDB writes `NO_ORDER_SPECIFIED`-style placeholders (read as empty); many dinosaurs are filed as class Reptilia with no order, so dinosaur detection uses every dinosaur family in `rules.csv` plus egg and track families; microfossils and algae get body plan `skip` (counted, not reviewed); 5.4% of occurrence-slices remain unmapped (no taxonomy, dinosaurs without a family, tracks, lycopsids, gnetophytes, liverworts: see `pipeline/review/unmapped_taxa.csv`). Ecology files are gzipped JSON (`ecology/{age}.json.gz`, 11 MB in all, from 204 MB plain). Terrestrial-environment fossils land on 1° DEM land 67–99% of the time, and on land or shelf above −200 m 88–99.7% (`pipeline/checks/fossil_land_check.py`), confirming the plate model choice (DESIGN A12). Settled while coding: the PBDB query uses `min_ma=62.5&max_ma=252.5&timerule=overlap&show=class,coords,env&vocab=pbdb&limit=all&datainfo` (parameter names confirmed against published PBDB download metadata); the `datainfo` header is parsed for the access time and licence. Intermediates are gzipped CSV/JSON rather than parquet (no extra dependency). PBDB's own download metadata has stated **CC0** since at least November 2025 (earlier CC BY 4.0); the pipeline records whatever the actual download says. Non-avian dinosaurs are recognised by Saurischia/Ornithischia and their subgroups at class, order or family level, birds (Aves) kept. `rules.csv` is a starter set; size hints stay blank until sourced.
 ---
 
 ## 0. config.py
@@ -356,10 +356,32 @@ copy hand-curated facts.json ("Did you know?" cards, ui/ §1c) to public/data
 
 ---
 
+## §7 places.py: modern places (DESIGN A19)
+
+```
+partitioner = the fossils' (rotate.Rotator): PALEOMAP v19o static polygons at 0 Ma
+for each 0.1° cell centre (bulk partition_geometry, same polygon order as partition_point):
+    plate, plate_begin = polygon's plate ID and begin time
+seafloor_age = OceansOnly polygon begin time, looked up at 0.5°, then per 0.1° cell in any 0.5° block
+               whose 3 × 3 neighbourhood mixes ocean and not-ocean (coasts)
+crust_from_ma = youngest of (plate_begin, seafloor_age) that is a real age (0, ≥ 4000 and ±inf mean "not stated")
+units = unique (plate, crust_from_ma); grid = index into units (int16, 0 = no plate)
+for each slice, each plate: quaternion of rotations.get_rotation(age, plate)   (anchor 0, from 0 Ma)
+
+# INVARIANT: quaternion · v equals pyGPlates' rotation of v (< 1 m)           (pytest)
+# INVARIANT: the browser's placement of 128 fixture points equals pyGPlates' (< 0.1 km where the
+#            0.1° grid gives the same plate, ≥ 97% of points)                  (npm test, real data)
+# INVARIANT: never pin crust on a slice older than crust_from_ma               (unit test)
+```
+
+Measured 2026-11-03: 223 plates, 1,931 units, 99.95% of cells on a plate; 184 KB grid + 752 KB JSON (≈ 0.25 MB served gzipped).
+
+---
+
 ## run_all.py
 
 ```
-run ingest_dem -> continentality -> ingest_climate -> copy climate_by_age -> ingest_pbdb -> rotate -> classify_taxa -> bin_occurrences -> build_manifest
+run ingest_dem -> continentality -> ingest_climate -> copy climate_by_age -> ingest_pbdb -> rotate -> classify_taxa -> bin_occurrences -> places -> build_manifest
 stop on first failed INVARIANT; print a summary table of counts per slice
 
 # INVARIANT: two runs on unchanged inputs produce byte-identical /public/data

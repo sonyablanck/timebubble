@@ -58,9 +58,9 @@ async function start(): Promise<void> {
     console.error(e);
     return;
   }
-  if (url.pin) globe.pin(url.pin.lat, url.pin.lon);
+  if (url.pin && !url.place) globe.pin(url.pin.lat, url.pin.lon);
   root.textContent = "";                       // clear the loading message
-  render(<App globe={globe} store={store} getWalk={getWalk} initialWalk={url.walk} />, root);
+  render(<App globe={globe} store={store} getWalk={getWalk} initialWalk={url.walk} initialPlace={url.place} />, root);
   document.body.classList.add("ready");
 }
 

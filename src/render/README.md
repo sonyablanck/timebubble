@@ -23,4 +23,4 @@ Rules: no swimming (the shore stops you; points in the sea start in flight), slo
 
 `projection.test.ts` (inverse, rebase continuity across the antimeridian, float32-safe origin after 50 km, curvature, sun, compass), `meshes.test.ts` (height lookup, E/W continuity, mesh raycast agrees with the walker's ground height, morph field) and `organisms/models.test.ts` (every model and variant: size, footing, attributes, triangle budget, necks up and tails down, rig pivots). The browser walk-through `tests/browser/walk_browser.mjs` runs the whole flow on real data: ground clamp while running, overlay, inspect card, flight, crossing tile edges without jumps, sea start, back to the globe, no console errors.
 
-Not yet: animal integument, quality presets, photo mode, focus/evidence overlay modes, coastline outlines in the overlay.
+Since the first version: photo mode (K), the focus and evidence overlay modes, and the invented-coastline outline are done (see PSEUDOCODE status). Not yet: animal integument (feathers, filaments, scales) and quality presets beyond the Settings detail level.

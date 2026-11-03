@@ -14,6 +14,7 @@ page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
 const t0 = Date.now();
 await page.goto(url);
 await page.waitForSelector("body.ready", { timeout: 60000 });
+await page.evaluate(() => document.querySelector(".intro button")?.click());   // the first-visit intro (added after this script)
 await page.waitForTimeout(1500);
 console.log("ready in", Date.now() - t0, "ms");
 const label = () => page.locator(".slice-label").innerText();

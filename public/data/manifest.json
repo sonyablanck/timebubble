@@ -1,7 +1,7 @@
 {
  "climate_params": "climate_by_age.json",
  "credits": "credits.json",
- "data_version": "00aa0797087e7bba",
+ "data_version": "59c5cc8138564310",
  "dem_source": "PALEOMAP PaleoDEMs (Scotese et al. 2024, v24221)",
  "kpg_ma": 66.0,
  "pbdb": {
@@ -13,6 +13,7 @@
   "url": "http://paleobiodb.org/data1.2/occs/list.csv?min_ma=62.5&max_ma=252.5&timerule=overlap&show=class,coords,env&vocab=pbdb&limit=all&datainfo"
  },
  "pipeline_version": "0.1.0",
+ "places": "places/places.json",
  "plate_model": "PALEOMAP v19o_r1d (Scotese et al. 2024)",
  "schema": 1,
  "slices": [

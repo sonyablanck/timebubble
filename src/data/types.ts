@@ -52,6 +52,7 @@ export interface Manifest {
   kpg_ma: number;
   climate_params?: string;  // climate_by_age.json, once curated (pipeline §1d)
   credits?: string;         // credits.json, once generated (pipeline §6)
+  places?: string;          // places/places.json, the modern-place lookup (pipeline §7)
   slices: SliceEntry[];     // sorted by age, oldest first
 }
 

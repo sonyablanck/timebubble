@@ -10,6 +10,8 @@ export interface GlobeViewState {
   layers: GlobeLayer[];
   exaggeration: number;
   pin?: { lat: number; lon: number };
+  /** A searched modern place (places/ §3): present-day coordinates and its name; the pin follows its plate. */
+  place?: { name: string; lat: number; lon: number };
   walk?: WalkViewState;
 }
 
@@ -38,6 +40,10 @@ export function viewToUrl(v: GlobeViewState): string {
   q.set("layers", ALL_LAYERS.filter((l) => v.layers.includes(l)).join(","));
   q.set("ex", String(Math.round(v.exaggeration)));
   if (v.pin) q.set("pin", `${r2(v.pin.lat)},${r2(v.pin.lon)}`);
+  if (v.place) {
+    q.set("place", `${r4(v.place.lat)},${r4(v.place.lon)}`);
+    q.set("pn", v.place.name.slice(0, 80));
+  }
   if (v.walk) {
     const w = v.walk;
     q.set("walk", `${r4(w.lat)},${r4(w.lon)}`);
@@ -70,6 +76,10 @@ export function viewFromUrl(search: string): Partial<GlobeViewState> {
   if (ex !== undefined) out.exaggeration = ex;
   const pin = q.get("pin")?.split(",").map(Number);
   if (pin && pin.length === 2 && pin.every(Number.isFinite)) out.pin = { lat: pin[0]!, lon: pin[1]! };
+  const place = q.get("place")?.split(",").map(Number);
+  if (place && place.length === 2 && place.every(Number.isFinite) && Math.abs(place[0]!) <= 90 && Math.abs(place[1]!) <= 180) {
+    out.place = { lat: place[0]!, lon: place[1]!, name: (q.get("pn") ?? "").trim().slice(0, 80) || `${place[0]}, ${place[1]}` };
+  }
   const walk = q.get("walk")?.split(",").map(Number);
   if (walk && walk.length === 2 && walk.every(Number.isFinite) && Math.abs(walk[0]!) <= 90) {
     const look = (q.get("look") ?? "0,0").split(",").map(Number);

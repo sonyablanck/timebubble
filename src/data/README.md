@@ -44,6 +44,8 @@ Create one `DataStore` per thread (main thread and terrain worker); they share n
 | `dem()` | `DemSampler` (0.1°, 3600×1801) | m |
 | `ecology()` | `EcologyIndex` | km for distances |
 
+On the store itself: `credits()`, `climateParams()`, and `places()` (the modern-place lookup, `PlaceIndex` from `src/places/`, loaded on the first search; `null` if `pipeline.places` hasn't run).
+
 Every failure is a `DataError` with `kind` (`network`, `format`, `missing`, `region`) and the file `path`.
 
 ## Invariants (tested)

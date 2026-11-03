@@ -116,8 +116,8 @@ DATASETS = [
      "licence": "CC BY 4.0", "ref": "scotese2024data", "used_for": "elevation and bathymetry per slice, 0.1°; the 1° globe grid",
      "changes": "gzipped int16 grids; 0.1° DEM in 10° chunks; area-averaged to 1° for the globe"},
     {"name": "PALEOMAP Global Plate Model v19o_r1d (item 3a)", "version": "v24221", "doi": "10.5281/zenodo.10659112",
-     "licence": "CC BY 4.0", "ref": "scotese2024data", "used_for": "rotating fossil occurrences to each slice",
-     "changes": "used with pyGPlates; not redistributed"},
+     "licence": "CC BY 4.0", "ref": "scotese2024data", "used_for": "rotating fossil occurrences to each slice; placing searched modern places on each slice",
+     "changes": "used with pyGPlates; shipped only in derived form: present-day plate IDs and seafloor ages rasterised to 0.1°, and per-plate rotations for each slice as unit quaternions"},
     {"name": "Mean annual temperature grids (item 6a1; Scotese 2022)", "version": "scotese02a_v21321", "doi": "10.5281/zenodo.5718392",
      "licence": "CC BY 4.0", "ref": "scotese2022data", "used_for": "temperature per slice, 1°",
      "changes": "stored in 0.01 °C; nearest-age interval per slice; the 65 Ma slice uses the 60 Ma grid"},
@@ -140,6 +140,7 @@ HAND_ENTERED = [
 SOFTWARE = [
     {"name": "Three.js", "licence": "MIT"}, {"name": "Preact", "licence": "MIT"}, {"name": "Vite", "licence": "MIT"},
     {"name": "pyGPlates (pipeline only, not shipped)", "licence": "GPL-2.0-only"},
+    {"name": "Place search: Nominatim, data © OpenStreetMap contributors (queried live, nothing stored)", "licence": "ODbL"},
 ]
 
 
@@ -203,6 +204,13 @@ def build(out: Path) -> dict:
     if q.exists():
         meta = read_json(q)
         manifest["pbdb"] = {k: meta.get(k) for k in ("access_time", "retrieved_utc", "data_license", "license_url", "records_found", "url")}
+    elif (out / "manifest.json").exists() and (out / "ecology").is_dir():
+        # raw download not in this working copy: keep what the last full run recorded
+        previous = read_json(out / "manifest.json").get("pbdb")
+        if previous:
+            manifest["pbdb"] = previous
+    if (out / "places" / "places.json").exists():
+        manifest["places"] = "places/places.json"
     refs = parse_references()
     if CLIMATE_PARAMS.exists():
         params = read_json(CLIMATE_PARAMS)

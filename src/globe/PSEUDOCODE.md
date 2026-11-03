@@ -223,4 +223,5 @@ drag snaps to ticks; keyboard [ and ] step
 
 ## Deferred (v2)
 
-- **Modern coastlines overlay:** rotate present-day coastlines to each slice with pyGPlates + PALEOMAP in the pipeline, so players can see where today's continents were. This is the cheap first half of "where was my town?" (DESIGN §9).
+- ~~"Where was my town?"~~ Done 2026-11-03 without the overlay: `src/places/` (search) and `Globe.pin(lat, lon, label)` (a named marker that the UI moves with the plate on each slice change).
+- **Modern coastlines overlay:** rotate present-day coastlines to each slice with pyGPlates + PALEOMAP in the pipeline, so players can see where today's continents were (DESIGN §9). Optional now that the place search exists; `public/data/places/` already holds the per-slice plate rotations it would need.

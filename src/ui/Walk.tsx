@@ -1,5 +1,6 @@
 import { Fragment } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
+import { usePanelFocus } from "./focus";
 import { OVERLAY_COLOURS } from "../render/materials";
 import { FOCUS_FLAGS, fmtCount, fmtDensity, fmtHours, fmtLat, fmtLon, fmtM, type InfoCard, type LocateStatus, type LocateTarget, type OverlayMode, type PlayerState, type TileEcologyView, type WalkRenderer } from "../render/walk";
 import { PLAN_INFO, presenceLabel, presencePct, type TaxonEntry } from "../ecology/roster";
@@ -162,6 +163,8 @@ function CiteDialog({ makeReport, onClose }: { makeReport: () => Promise<Provena
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   useEffect(() => { makeReport().then(setR).catch((e) => setErr(String(e))); }, []);
+  const ref = useRef<HTMLElement>(null);
+  usePanelFocus(ref, { modal: true, onEscape: onClose, fallback: walkCanvas });
   const copy = (what: string, text: string) => {
     navigator.clipboard?.writeText(text).then(() => setCopied(what)).catch(() => setCopied(null));
   };
@@ -178,7 +181,7 @@ function CiteDialog({ makeReport, onClose }: { makeReport: () => Promise<Provena
   };
   const cite = r ? citeThisView(r) : "";
   return (
-    <section class="panel cite-dialog" role="dialog" aria-label="Cite this view">
+    <section ref={ref} class="panel cite-dialog" role="dialog" aria-modal="true" aria-label="Cite this view" tabIndex={-1}>
       <h2>Cite this view</h2>
       {err && <p class="muted">Couldn't build the report: {err}</p>}
       {!r && !err && <p class="muted">Gathering sources…</p>}
@@ -199,6 +202,8 @@ function CiteDialog({ makeReport, onClose }: { makeReport: () => Promise<Provena
     </section>
   );
 }
+
+const walkCanvas = () => document.getElementById("walk");
 
 const MODE_LABELS: Record<Exclude<OverlayMode, "off">, string> = { source: "Source", focus: "Focus", evidence: "Evidence" };
 
@@ -282,8 +287,11 @@ function Compass({ heading }: { heading: number }) {
 }
 
 function Card({ card, onClose }: { card: InfoCard; onClose: () => void }) {
+  // opened mid-walk by I or a click: announce it, but leave the keys with the view
+  const ref = useRef<HTMLElement>(null);
+  usePanelFocus(ref, { takeFocus: false, onEscape: onClose });
   return (
-    <section class="panel info-card" aria-label={`${card.title}: info card`}>
+    <section ref={ref} class="panel info-card" role="region" aria-live="polite" aria-label={`${card.title}: info card`}>
       <h2>
         {card.title}
         <span class={`badge badge-${card.levelName}`}>{card.levelName}</span>
@@ -319,7 +327,9 @@ function FieldGuide({ eco, repFauna, onRepFauna, onClose, onLocate, locating }: 
   onLocate: (t: LocateTarget) => void; locating: string | null;
 }) {
   const [filter, setFilter] = useState<"all" | "data" | "inferred">("all");
-  if (!eco) return <section class="panel field-guide" aria-label="Field guide"><h2>Field guide</h2><p class="muted">Loading this tile…</p></section>;
+  const ref = useRef<HTMLElement>(null);
+  usePanelFocus(ref, { focusRoot: true, onEscape: onClose, fallback: walkCanvas });
+  if (!eco) return <section ref={ref} tabIndex={-1} class="panel field-guide" aria-label="Field guide"><h2>Field guide</h2><p class="muted">Loading this tile…</p></section>;
   const e = eco.ecology;
   const rows = e.roster.filter((r) => filter === "all" || r.source === filter);
   const groups = new Map<string, TaxonEntry[]>();
@@ -328,7 +338,7 @@ function FieldGuide({ eco, repFauna, onRepFauna, onClose, onLocate, locating }: 
   for (const a of e.animals) { const k = e.roster[a.taxon]!.key; placed.set(k, (placed.get(k) ?? 0) + 1); }
   const nData = e.roster.filter((r) => r.source === "data").length;
   return (
-    <section class="panel field-guide" aria-label="Field guide">
+    <section ref={ref} tabIndex={-1} class="panel field-guide" aria-label="Field guide">
       <h2>Field guide <span class="muted">· this 4 km tile, {eco.sliceAge} Ma</span></h2>
       {!e.available ? <p class="muted">No fossil data for this slice yet.</p> : (
         <>

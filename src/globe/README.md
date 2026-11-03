@@ -29,7 +29,7 @@ Keys (when focus is not in a form control): arrows rotate, `+`/`-` zoom, `[`/`]`
 | `camera.ts` | Orbit camera in palaeo-coordinates: continents drift underneath when the slice changes |
 | `timeline.ts` | Slider ticks, period bands, snapping and stepping |
 | `fossils.ts` | Fossil dots per 5° bin at the occurrences' centroid; empty until the fossil pipeline runs |
-| `globe.ts` | Scene, slices (crossfade, prefetch of neighbours, ≤ 3 slices of textures), layers, input, hover, picking |
+| `globe.ts` | Scene, slices (crossfade, prefetch of neighbours, ≤ 3 slices of textures), layers, input, hover, picking; `pin(lat, lon, label)` draws a named marker for a searched place; the canvas is a Tab stop and Enter picks the centre of the view (ui §9) |
 
 ## Decisions made while coding
 

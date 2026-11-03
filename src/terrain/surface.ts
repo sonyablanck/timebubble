@@ -110,7 +110,6 @@ export class Surface {
   private readonly res: number;
   private readonly latNorth: number;
   private readonly lonWest: number;
-  private readonly nlat: number;
   private readonly nlon: number;
   private win: Window | null = null;
   private readonly cells = new Map<string, CellCorr>();
@@ -126,7 +125,6 @@ export class Surface {
     this.res = dem.spec.res;
     this.latNorth = dem.spec.lat_north;
     this.lonWest = dem.spec.lon_west;
-    this.nlat = dem.spec.nlat;
     this.nlon = dem.spec.nlon;
   }
 

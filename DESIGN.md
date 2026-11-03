@@ -43,7 +43,7 @@ This is the project's main point of difference from existing tools, and it is wh
 | A1 | Platform | **Desktop** browser (WebGL2), TypeScript, Vite; mouse and keyboard; no mobile support | Shareable by link; well supported by AI coding tools; desktop-only frees the budget for tile resolution and vegetation density |
 | A2 | Renderer | Three.js only (globe and terrain) | One library to learn; CesiumJS is heavier than a stylised globe needs |
 | A3 | Hosting | Static site (GitHub Pages); processed data committed to the repo | No server costs or maintenance; one place for everything. Gzipped data is roughly a few hundred MB, inside the Pages 1 GB limit |
-| A4 | Data access | **Offline preprocessing**, shipped as static assets | No runtime API dependency, rate limits or CORS problems; reproducible |
+| A4 | Data access | **Offline preprocessing**, shipped as static assets | No runtime API dependency, rate limits or CORS problems; reproducible. One optional exception: the place search (A19) queries Nominatim live, and the rest of the app works without it |
 | A5 | Preprocessing | Python scripts in `/pipeline`; plate rotation with **pyGPlates run locally** | Best library support for raster and CSV work (xarray/netCDF4, numpy, pandas); local rotation avoids depending on a web service with no published terms |
 | A6 | Time model | Discrete slices matching PaleoDEM intervals (5 Myr); snap to nearest | Interpolating heightmaps between plate configurations is physically meaningless |
 | A7 | Coordinate frame | Everything in **palaeo-coordinates** for the chosen slice, computed by the pipeline | Avoids reconstruction maths at runtime |
@@ -57,6 +57,7 @@ This is the project's main point of difference from existing tools, and it is wh
 | A14 | Height format | Raw int16 (metres, little-endian), gzipped (`.i16.gz`), decoded in-browser with `DecompressionStream` | Browsers decode PNGs to 8 bits per channel; raw int16 is lossless and needs no decoder library |
 | A16 | UI | Preact + TSX, HTML overlaid on the canvas; one view-state store synced to the URL | Small (MIT, ~4 KB); familiar React model that AI tools write fluently; accessible HTML instead of WebGL UI |
 | A17 | Walk mode streaming | Floating origin at the current tile centre; 3 × 3 tile ring streamed around the player; far horizon drawn from the 0.1° DEM with no generated detail | Keeps float32 precision; lets players walk indefinitely; distant terrain is data, not invention |
+| A19 | Modern places | Search by name with OpenStreetMap's Nominatim (on submit only, ≥ 1.1 s apart, cached, attributed); rotate in the browser with a baked 0.1° present-day plate grid and per-slice plate quaternions from the same PALEOMAP model and plate assignment as the fossils | pyGPlates can't run in a browser and is GPL-2.0-only; baking its answers keeps the app static, lands within centimetres of pyGPlates, and puts a searched town and a fossil from the same spot in the same place. A drawn modern-map overlay was not needed for "where was my town?" |
 | A15 | Licensing | Code: MIT recommended (AGPL-3.0 considered; if chosen, keep `/pipeline` under MIT because of pyGPlates' GPL-2.0-only licence). Docs and derived data: CC BY 4.0 | Matches the CC BY 4.0 sources; permissive code licence maximises research reuse; avoids the GPL-2.0-only / GPL-3.0 incompatibility in the pipeline (§11) |
 
 ---
@@ -66,7 +67,7 @@ This is the project's main point of difference from existing tools, and it is wh
 | Source | Use | Format | Licence |
 |---|---|---|---|
 | PALEOMAP PaleoDEMs, 2024 release (Scotese et al. 2024, Zenodo v24221, item 5a) | Elevation and bathymetry per slice (0 m = palaeo-shoreline), 0.1°; the 1° globe grid is derived from it | netCDF, 3601×1801 (a 1° CSV, item 5b, is used only as a cross-check) | CC BY 4.0 |
-| PALEOMAP Global Plate Model v19o_r1d (same record, item 3a) | Rotating fossil coordinates to each slice | GPlates formats (`.rot` + polygons) | CC BY 4.0 |
+| PALEOMAP Global Plate Model v19o_r1d (same record, item 3a) | Rotating fossil coordinates to each slice; placing searched modern places (A19, shipped as a derived plate grid and rotation table) | GPlates formats (`.rot` + polygons) | CC BY 4.0 |
 | Paleobiology Database (PBDB) API | Plant and animal occurrences: modern lat/lng, age range, taxonomy, environment | CSV/JSON | CC0, as stated in PBDB's download metadata since at least Nov 2025 (previously CC BY 4.0); we credit it either way and record the licence each download states |
 | Mean annual temperature, version scotese02a_v21321 (same 2024 record, item 6a1; identical to Scotese 2022) | Temperature per slice, 1°, >100 stage-level intervals; HadCM3L adjusted to proxies (Scotese et al. 2021; Valdes, Scotese and Lunt 2021) | List-format CSV, 361×181 node-registered | CC BY 4.0 |
 | Mean annual precipitation, version scotese_02 (same record, item 6b2) | Moisture per slice (biome); raw HadCM3L model output, not proxy-adjusted (Valdes, Scotese and Lunt 2021) | netCDF, 361×181 node-registered (185–255 Ma files padded to 366 columns). Units are **mm/day**, not the mm/month the record's explanation states (area means 3.2–4.1; Earth today ≈ 2.7 mm/day) | CC BY 4.0 |
@@ -100,6 +101,7 @@ Attribution for all datasets appears in-app (About panel and the provenance over
 4. **classify_taxa.py**: map each taxon to a **body-plan class** (e.g. small theropod, large theropod, sauropod, ornithopod, ceratopsian, pterosaur, marine reptile, conifer, cycad/bennettitalean, fern, early angiosperm). Unmapped taxa are listed for manual review, not guessed.
 5. **bin_occurrences.py**: write spatially binned JSON per slice (5° bins).
 6. **build_manifest.py**: write an index of slices and assets for the app, plus the generated `CREDITS.md` section with dataset versions, DOIs and retrieval dates.
+7. **places.py**: a 0.1° grid of present-day plates and crust ages, plus per-slice plate rotations, so the app can place a searched modern location (A19). Runs before `build_manifest.py`.
 
 Output goes to `/public/data`, regenerated by one command. Output must be **byte-identical** on re-runs with unchanged inputs (fixed gzip timestamp, sorted keys), so regenerating data doesn't bloat git history.
 
@@ -116,6 +118,7 @@ src/
   render/      Scene, camera, water, sky, lighting, LOD
   provenance/  Source tags and overlay
   data/        Asset loading and caching
+  places/      Modern place search (Nominatim) and rotation to a slice
   ui/          Panels, info cards, settings
 ```
 
@@ -171,8 +174,8 @@ Accuracy constraints the rules must respect:
 
 ## 9. Deferred (v2+)
 
-- Modern coastlines overlay on the globe: present-day coastlines rotated to each slice in the pipeline (first half of the next item).
-- "Where was my town?": rotate a modern location to each slice with the same pyGPlates + PALEOMAP step, either precomputed on a grid or run as a small lookup table shipped with the app.
+- Modern coastlines overlay on the globe: present-day coastlines rotated to each slice in the pipeline (optional, now that the place search below exists).
+- ~~"Where was my town?"~~ **Done 2026-11-03** (A19, pipeline §7, `src/places/`): search a modern place, and its pin follows its plate through the slices. Places on crust younger than the slice (young seafloor, Iceland, accreted terranes) say so instead of being pinned.
 - Seam-safe hydraulic erosion, rivers and lakes.
 - Seasonal climate (monthly temperature and precipitation), seasons and weather.
 - Palaeozoic and Cenozoic slices.
@@ -221,6 +224,8 @@ Accuracy constraints the rules must respect:
 - Compare the derived 1° globe against the record's 1° CSV (item 5b) for one slice. *Needs the raw download in `pipeline/raw`, which is not in the current working copy.*
 - The climate grids come from HadCM3L runs on the palaeogeography of Valdes et al. (2021), not the 2024 DEMs, so coastlines differ slightly. Measure the land/sea disagreement per slice and report it in the climate sidecar. *Needs the HadCM3L land mask from the raw climate files (not in the current working copy).*
 - ~~Climate interval ages~~ **Done 2026-10-31:** every slice 65–250 Ma has an exact-age temperature and precipitation file; real-data quirks (legend anchors at 90°N in the temperature CSVs, varying pole rows, NaN padding columns, float32 coordinates in the 100 Ma DEM, mm/day units) are handled and tested.
+- ~~Accessibility audit (ui §9)~~ **Done 2026-11-03:** axe-core WCAG 2.2 AA clean on every screen; focus traps, Esc order, keyboard picking, contrast and 150% text fixed (ui pseudocode amendment §9). Still worth doing: a manual pass with a real screen reader.
+- ~~Derived-data licence file~~ **Added 2026-11-03:** `public/data/LICENSE` (CC BY 4.0, with sources and changes).
 - Ask the dataset authors whether the 65 Ma temperature grid deliberately represents K–Pg cooling, and confirm the precipitation units (mm/day, not mm/month as stated).
 - ~~pyGPlates licence~~ **Confirmed 2026-11-02:** the pyGPlates 1.0.0 wheel's licence metadata is GPL version 2 only ("not any later version"). It stays a pipeline-only dependency, not shipped.
 - ~~PhanDA licence~~ **Checked 2026-11-02:** the repository has no licence file. Only the per-stage GMST percentile values are stored (`pipeline/climate_by_age.json`), cited to Judd et al. (2024); nothing else is redistributed. Ask the authors for explicit permission when emailing them.

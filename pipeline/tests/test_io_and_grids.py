@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 
-from pipeline import config
 from pipeline.grids import fill_nodata, list_dem_files, load_global_grid, normalise, parse_age
 from pipeline.io_util import read_int16, to_int16, write_int16, write_json
 from pipeline.tests.conftest import MARKER, MARKER_ELEV, make_dem, synthetic_field

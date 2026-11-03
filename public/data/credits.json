@@ -10,12 +10,12 @@
    "version": "v24221"
   },
   {
-   "changes": "used with pyGPlates; not redistributed",
+   "changes": "used with pyGPlates; shipped only in derived form: present-day plate IDs and seafloor ages rasterised to 0.1°, and per-plate rotations for each slice as unit quaternions",
    "doi": "10.5281/zenodo.10659112",
    "licence": "CC BY 4.0",
    "name": "PALEOMAP Global Plate Model v19o_r1d (item 3a)",
    "ref": "scotese2024data",
-   "used_for": "rotating fossil occurrences to each slice",
+   "used_for": "rotating fossil occurrences to each slice; placing searched modern places on each slice",
    "version": "v24221"
   },
   {
@@ -122,6 +122,10 @@
   {
    "licence": "GPL-2.0-only",
    "name": "pyGPlates (pipeline only, not shipped)"
+  },
+  {
+   "licence": "ODbL",
+   "name": "Place search: Nominatim, data © OpenStreetMap contributors (queried live, nothing stored)"
   }
  ]
 }

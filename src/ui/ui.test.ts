@@ -15,6 +15,16 @@ describe("URL state (ui §0, provenance §5)", () => {
     expect(viewFromUrl("?age=abc&lat=1&lon=2&layers=relief,lasers&ex=")).toEqual({ layers: ["relief"] });
     expect(viewFromUrl("")).toEqual({});
     expect(viewFromUrl("?pin=1,x")).toEqual({});
+    expect(viewFromUrl("?place=95,0&pn=Nowhere")).toEqual({});
+  });
+
+  it("INVARIANT: a searched place survives the link, name included (places §3)", () => {
+    const v: GlobeViewState = {
+      age: 150, camera: { lat: 42.45, lon: 9.57, dist: 2.4 }, layers: ["relief"], exaggeration: 40,
+      pin: { lat: 42.45, lon: 9.57 }, place: { name: "Hastings, East Sussex", lat: 50.855, lon: 0.573 },
+    };
+    expect(viewFromUrl(viewToUrl(v))).toEqual(v);
+    expect(viewFromUrl("?place=50.855,0.573").place).toEqual({ name: "50.855, 0.573", lat: 50.855, lon: 0.573 });
   });
 });
 

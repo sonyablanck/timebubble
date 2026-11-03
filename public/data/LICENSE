@@ -1,0 +1,64 @@
+Time Bubble derived data
+========================
+
+Copyright © 2026 Sonya Blanck, for the processing. The underlying data belong to the
+authors and contributors credited below.
+
+The files in this folder (public/data, served by the app as /data) are licensed under the
+Creative Commons Attribution 4.0 International License (CC BY 4.0):
+https://creativecommons.org/licenses/by/4.0/
+Full licence text: https://creativecommons.org/licenses/by/4.0/legalcode
+
+You are free to share and adapt them for any purpose, including commercially, provided you
+give appropriate credit (to Time Bubble and to the original sources below), link to the
+licence, and indicate if changes were made. No further restrictions are added.
+
+Suggested attribution:
+  Time Bubble derived data (https://github.com/sonyablanck/timebubble), CC BY 4.0, built from
+  PALEOMAP (Scotese et al. 2024; Scotese 2022) and the Paleobiology Database.
+
+
+Sources and what was changed
+----------------------------
+
+1. Scotese, C.R., Vérard, C., Burgener, L., Elling, R.P. and Kocsis, A.T. (2024)
+   Phanerozoic-scope supplementary material to 'The Cretaceous World: Plate Tectonics,
+   Paleogeography, and Paleoclimate' from the PALEOMAP project (v24221) [Dataset]. Zenodo.
+   doi:10.5281/zenodo.10659112. Licence: CC BY 4.0.
+   Used: PaleoDEMs (item 5a), plate model v19o_r1d (item 3a), mean annual precipitation
+   (item 6b2) and temperature (item 6a1) grids.
+   Changes:
+   - globe/, terrain/: elevation converted to gzipped little-endian int16 metres; the 0.1° DEM
+     split into 10° chunks with a one-cell overlap; area-averaged to 1° for the globe;
+     signed distance to the coast (continentality) derived from it.
+   - globe/*.temp.i16.gz, *.precip.i16.gz: climate grids stored in 0.01 °C and 0.01 mm/day,
+     nearest-age interval matched to each slice; the 65 Ma slice uses the 60 Ma temperature
+     grid (reason recorded in globe/65.climate.json).
+   - ecology/: fossil coordinates rotated to each slice with the v19o_r1d plate model.
+   - places/: present-day plate IDs and crust ages (from the plate and seafloor-age polygons)
+     rasterised to a 0.1° grid, and each plate's rotation for each slice stored as a unit
+     quaternion, computed with pyGPlates.
+
+2. Scotese, C.R. (2022) Global Mean Surface Temperatures for 100 Phanerozoic Time Intervals
+   (scotese02a_v21321) [Dataset]. Zenodo. doi:10.5281/zenodo.5718392. Licence: CC BY 4.0.
+   (The temperature grids above; identical to item 6a1.)
+
+3. The Paleobiology Database, https://paleobiodb.org. Licence as stated by the download
+   (CC0 at the time of download; recorded with the access date in manifest.json). Credited
+   regardless, with per-occurrence occurrence and reference numbers kept in ecology/.
+   Changes: cleaned, classified into body plans (pipeline/rules.csv), rotated to each slice
+   and binned in 5° cells.
+
+4. Values entered by hand in climate_by_age.json (global mean temperatures from Judd et al.
+   2024 and others) are facts cited to their sources; full references are in credits.json
+   and REFERENCES.md. The PhanDA repository (Judd et al. 2024) has no licence file; only its
+   per-stage summary values are stored here, with the citation.
+
+Papers the datasets ask to be cited: Scotese et al. (2024), Kocsis and Scotese (2021),
+Scotese et al. (2021), Valdes, Scotese and Lunt (2021). Full entries: REFERENCES.md.
+
+Not included: no OpenStreetMap data is stored here. The app's place search queries
+OpenStreetMap's Nominatim service live (data © OpenStreetMap contributors, ODbL).
+
+The software that produced these files (pipeline/) is MIT-licensed; see LICENSE at the
+repository root. pyGPlates (GPL-2.0-only) was used to compute rotations and is not included.

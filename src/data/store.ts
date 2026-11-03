@@ -3,6 +3,7 @@ import { EcologyIndex } from "./ecology";
 import { DataError } from "./errors";
 import { fetchInt16, fetchJson } from "./fetch";
 import { Grid } from "./grid";
+import { PlaceIndex, type PlacesMeta } from "../places/rotate";
 import type { ClimateMeta, ClimateParams, Credits, Fetcher, GridSpec, Manifest, Occurrence, SliceEntry } from "./types";
 
 // data/ §1 and §5. One DataStore per thread (main thread, terrain worker); no shared state.
@@ -33,7 +34,7 @@ export function validateManifest(m: Manifest, url: string): void {
   for (let i = 1; i < ages.length; i++) {
     if (!(ages[i - 1]! > ages[i]!)) bad("slices must be sorted by age, oldest first, with unique ages");
   }
-  const paths: (string | null | undefined)[] = [m.climate_params, m.credits];
+  const paths: (string | null | undefined)[] = [m.climate_params, m.credits, m.places];
   for (const s of m.slices) {
     paths.push(s.globe, s.globe_meta, s.continentality, s.temperature, s.precipitation,
       s.climate_meta, s.terrain, s.ecology);
@@ -51,6 +52,7 @@ export class DataStore {
   private manifestPromise: Promise<Manifest> | null = null;
   private climateParamsPromise: Promise<ClimateParams[] | null> | null = null;
   private creditsPromise: Promise<Credits | null> | null = null;
+  private placesPromise: Promise<PlaceIndex | null> | null = null;
   /** Current slice first, then the previous one (data/ §5: keep current + previous). */
   private handles: SliceHandle[] = [];
 
@@ -107,6 +109,24 @@ export class DataStore {
       return fetchJson<Credits>(this.fetcher, this.url(m.credits, m.data_version));
     })();
     return this.creditsPromise;
+  }
+
+  /**
+   * The modern-place lookup (pipeline §7, places/ §1), or null if the pipeline step hasn't run.
+   * Loaded only when someone searches (≈ 1 MB), never at start-up.
+   */
+  places(): Promise<PlaceIndex | null> {
+    this.placesPromise ??= (async () => {
+      const m = await this.manifest();
+      if (!m.places) return null;
+      const meta = await fetchJson<PlacesMeta>(this.fetcher, this.url(m.places, m.data_version));
+      if (meta.plate_model !== m.plate_model) throw new DataError("format", m.places, `plate model "${meta.plate_model}" differs from the manifest's`);
+      const g = meta.grid;
+      const units = await fetchInt16(this.fetcher, this.url(g.file, m.data_version), g.width * g.height);
+      return new PlaceIndex(meta, units);
+    })();
+    this.placesPromise.catch(() => { this.placesPromise = null; });   // a failed load can be retried
+    return this.placesPromise;
   }
 
   /** climate_by_age.json, or null until it has been curated (pipeline §1d). */

@@ -62,7 +62,7 @@ body.walking .globe-labels { display: none; }
 .sw-generated { background: #cc79a7; background-image: repeating-linear-gradient(45deg, #0009 0 1.5px, transparent 1.5px 5px); }
 .sw-inferred { background: var(--inferred); background-image: radial-gradient(#0008 1px, transparent 1px); background-size: 4px 4px; }
 
-.readout { right: var(--gap); bottom: 150px; width: 300px; font-size: 13px; }
+.readout { font-size: 13px; }
 .readout p { margin: 0; }
 .readout-list { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
 .readout-list dt { color: var(--muted); }
@@ -72,7 +72,7 @@ body.walking .globe-labels { display: none; }
 .badge-inferred { background: #8a5a00; }
 .badge-generated { background: #8f3f6e; }
 
-.walk { right: var(--gap); top: var(--gap); width: 300px; font-size: 13px; }
+.walk { font-size: 13px; }
 .walk h2 { text-transform: none; letter-spacing: 0; font-size: 16px; color: var(--text); }
 .warn { color: var(--warn); margin: 8px 0 0; }
 .notice { color: var(--accent); margin: 8px 0 0; }
@@ -195,3 +195,35 @@ ul.credits li { margin-bottom: 6px; }
 /* photo mode (ui §6b): only the small bar shows, and it is left out of the saved image */
 body.photo-mode .top-buttons { display: none; }
 .photo-hud .photo-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; padding: 6px 12px; pointer-events: auto; opacity: 0.85; }
+
+/* "Where was my town?" (places/ §2, ui §1b) */
+.place-search { position: static; width: 100%; padding: 8px 10px; font-size: 13px; pointer-events: auto; }
+.place-search form { display: flex; gap: 6px; }
+.place-search input[type=search] { flex: 1; min-width: 0; font: inherit; background: #0b0e14; color: var(--text); border: 1px solid var(--panel-border); border-radius: 4px; padding: 4px 8px; }
+.place-search input[type=search]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.place-results { list-style: none; margin: 6px 0 0; padding: 0; }
+.place-results li { margin: 0; }
+button.link { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text); padding: 4px 2px; font: inherit; cursor: pointer; border-radius: 4px; min-height: 0; }
+button.link:hover, button.link:focus-visible { background: #222a36; }
+.place-search .legend-note a { color: #9ecbff; }
+.place-name { font-size: 13px; margin: 0 0 6px; }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.globe-pin[data-on="1"] { position: absolute; left: 0; top: 0; font-size: 12px; font-weight: 600; color: #fff; white-space: nowrap; text-shadow: 0 0 3px #000, 0 0 2px #000; padding-left: 14px; margin-top: -8px; }
+.globe-pin[data-on="1"]::before { content: ""; position: absolute; left: -7px; top: 1px; width: 10px; height: 10px; border: 2px solid var(--accent); border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,0,0,0.6); }
+
+/* ui §9: links readable on dark panels; visible focus on the views and on panels that take focus */
+.panel a, .modal a { color: #9ecbff; }
+.panel a:hover { color: #c8e1ff; }
+#globe:focus-visible, #walk:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.panel[tabindex="-1"]:focus-visible, .panel[tabindex="-1"]:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ui §9: the right-hand column (place panel above, hover readout below) is one flex stack, so its panels
+   never overlap each other; the centre items are sized to fit between the side columns at 150% text */
+.right-col { position: absolute; right: var(--gap); top: calc(var(--gap) + 34px); bottom: 150px; width: 300px;
+  display: flex; flex-direction: column; gap: var(--gap); pointer-events: none; }
+.right-col > .panel { position: static; pointer-events: auto; }
+.right-col > .walk { flex: 0 0 auto; max-height: 100%; overflow: auto; }          /* the place panel keeps its buttons */
+.right-col > .readout { margin-top: auto; flex: 0 1 auto; min-height: 0; overflow: hidden; }   /* the hover readout gives way */
+.hud-top { width: clamp(200px, calc(100% - 2 * (300px + 3 * var(--gap))), 380px); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.hud-top .slice-label { text-align: center; white-space: normal; max-width: 100%; }
+.period-swatch { flex-shrink: 0; }

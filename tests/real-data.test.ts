@@ -81,4 +81,37 @@ describe.skipIf(!haveData)(`real pipeline output (${root})`, () => {
     expect(meta.temp.source_age).toBe(60);
     expect(meta.temp.override_reason).toMatch(/K–Pg/);
   });
+
+  // places/ §1: the browser's rotation against pyGPlates' own answers (pipeline/places.py --fixture)
+  it("INVARIANT: searched places land where pyGPlates puts them, and with the fossils' plates", async () => {
+    const fixture = join(__dirname, "fixtures", "places_expected.json");
+    if (!existsSync(fixture)) return;
+    const expected = JSON.parse(readFileSync(fixture, "utf8")) as {
+      name: string; lat: number; lon: number; plate: number; crust_from_ma: number | null; palaeo: Record<string, [number, number]>;
+    }[];
+    const idx = (await store.places())!;
+    expect(idx).not.toBeNull();
+    let samePlate = 0, worstKm = 0, checked = 0;
+    for (const e of expected) {
+      const u = idx.unitAt(e.lat, e.lon);
+      if (u?.plate !== e.plate) continue;      // the 0.1° grid can differ within a cell of a plate edge
+      samePlate++;
+      for (const [age, [plat, plon]] of Object.entries(e.palaeo)) {
+        const p = idx.locate(e.lat, e.lon, Number(age));
+        if (p.status !== "ok") { expect(e.crust_from_ma ?? Infinity, `${e.name} ${age} Ma`).toBeLessThan(Number(age) + 10); continue; }
+        const d = 6371 * Math.acos(Math.min(1, Math.sin(p.lat * Math.PI / 180) * Math.sin(plat * Math.PI / 180)
+          + Math.cos(p.lat * Math.PI / 180) * Math.cos(plat * Math.PI / 180) * Math.cos((p.lon - plon) * Math.PI / 180)));
+        worstKm = Math.max(worstKm, d); checked++;
+      }
+    }
+    expect(samePlate / expected.length).toBeGreaterThan(0.97);
+    expect(checked).toBeGreaterThan(300);
+    expect(worstKm).toBeLessThan(0.1);     // pyGPlates rounds to 1e-4°; the quaternions are exact
+    // named checks
+    const hastings = idx.locate(50.855, 0.573, 150);
+    expect(hastings.status).toBe("ok");
+    expect(idx.locate(64.146, -21.942, 65)).toMatchObject({ status: "not-formed" });   // Iceland: crust from ~15 Ma
+    expect(idx.locate(21.307, -157.858, 150)).toMatchObject({ status: "not-formed" }); // Honolulu: seafloor ~89 Ma
+    expect(idx.locate(21.307, -157.858, 65).status).toBe("ok");
+  });
 });

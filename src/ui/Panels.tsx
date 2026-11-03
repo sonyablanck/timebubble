@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { ClimateParams, Credits, DataStore } from "../data";
 import { APP_VERSION } from "../provenance/report";
+import { usePanelFocus } from "./focus";
 import { applyTextScale, saveSettings, type Detail, type Settings } from "./settings";
 
 // ui/ §1a intro, §4 settings, §5 about & credits, §7 help. Plain HTML panels over the canvas, with
@@ -10,19 +11,13 @@ export type PanelKind = "intro" | "about" | "help" | "settings";
 
 export const REPO_URL = "https://github.com/sonyablanck/timebubble";
 
-function useEsc(onClose: () => void) {
-  useLayoutEffect(() => {
-    const k = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
-    window.addEventListener("keydown", k, true);
-    return () => window.removeEventListener("keydown", k, true);
-  }, [onClose]);
-}
-
+/** Modal dialog: focus moves in (the autofocused button), Tab stays inside, Esc closes, focus returns (§9). */
 function Shell({ title, onClose, wide, children }: { title: string; onClose: () => void; wide?: boolean; children: preact.ComponentChildren }) {
-  useEsc(onClose);
+  const ref = useRef<HTMLElement>(null);
+  usePanelFocus(ref, { modal: true, onEscape: onClose, fallback: () => document.getElementById("globe") });
   return (
     <div class="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <section class={`panel modal${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
+      <section ref={ref} class={`panel modal${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
         <h2>{title}</h2>
         {children}
         <div class="buttons"><button type="button" class="secondary" onClick={onClose} autoFocus>Close</button></div>
@@ -34,10 +29,11 @@ function Shell({ title, onClose, wide, children }: { title: string; onClose: () 
 // ------------------------------------------------------------------ §1a intro
 
 export function Intro({ onStart, onAbout }: { onStart: () => void; onAbout: () => void }) {
-  useEsc(onStart);
+  const ref = useRef<HTMLElement>(null);
+  usePanelFocus(ref, { modal: true, onEscape: onStart, fallback: () => document.getElementById("globe") });
   return (
     <div class="modal-backdrop intro-backdrop">
-      <section class="panel modal intro" role="dialog" aria-modal="true" aria-label="Welcome to Time Bubble">
+      <section ref={ref} class="panel modal intro" role="dialog" aria-modal="true" aria-label="Welcome to Time Bubble">
         <h1>Time Bubble</h1>
         <p class="lead">Walk through the Mesozoic, built from real data, with every guess labelled.</p>
         <ol class="intro-steps">
@@ -101,6 +97,7 @@ export function About({ store, age, onClose }: { store: DataStore; age: number; 
           )}
           <h3>Software</h3>
           <p>{c.software.map((s) => `${s.name} (${s.licence})`).join(" · ")}</p>
+          <p class="legend-note">Privacy: Time Bubble has no accounts or analytics, and all its data are served with the app. The only request it makes to another server is the place search, which sends what you type to OpenStreetMap's Nominatim service (<a href="https://osmfoundation.org/wiki/Privacy_Policy" target="_blank" rel="noopener">its privacy policy</a>); typed coordinates stay on your computer. Links to fossil records open the Paleobiology Database only when you click them.</p>
           <p class="legend-note">Code: MIT licence. Documentation and derived data: CC BY 4.0, carrying the attributions above.</p>
         </>}
       </div>
@@ -114,6 +111,7 @@ const KEYS: [string, string][] = [
   ["Globe: drag / arrows", "rotate; wheel to zoom"],
   ["Globe: [ ]", "older / younger time slice"],
   ["Globe: click", "pick a place, then Walk here"],
+  ["Globe: /", "find a modern place (where was my town?)"],
   ["W A S D", "move (Shift: run)"],
   ["Mouse", "look (click the view first)"],
   ["Space", "hop; up when flying"],
@@ -149,6 +147,7 @@ export function Help({ onClose, onAbout }: { onClose: () => void; onAbout: () =>
             <li>Each slice is a 5-million-year snapshot; the world doesn't change between slices.</li>
             <li>Fossils say who lived nearby, not how many: numbers come from body size. Representative fauna (in settings and the field guide) shows one group of every taxon with nearby fossils.</li>
             <li>Plant and animal shapes are generic body plans, not species anatomy.</li>
+            <li>Searching for a modern place pins where that spot's plate carried it on each slice (PALEOMAP v19o_r1d, labelled inferred). Names you search go to OpenStreetMap's Nominatim server; typed coordinates stay on your computer.</li>
           </ul>
           <p><button type="button" class="secondary" onClick={onAbout}>About &amp; credits</button></p>
         </div>

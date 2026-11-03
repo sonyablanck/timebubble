@@ -4,7 +4,7 @@ Implements DESIGN.md §8 (biome half). Runs in the terrain worker, straight afte
 
 Conventions as in `pipeline/PSEUDOCODE.md`: `# INVARIANT:` lines become tests, `# CHECK:` lines are facts to verify first. Every numeric threshold here is a starting value to tune.
 
-> **Status: coded** (`src/biome/`, see its README) and checked on the real data, including Aftermath mode (Impact Winter with a year slider, and Fern Spike, chosen on the globe's 65 Ma slice). Not yet: the §5 data path (plant occurrences arrive with pipeline steps 2–5, so the mix is the labelled prior), the §2a Judd et al. (2024) ΔGMST line (needs `climate_by_age.json`), and the §9 snapshot tiles (need rotated fossil localities). Amendments from coding are at the end.
+> **Status: coded** (`src/biome/`, see its README) and checked on the real data, including Aftermath mode (Impact Winter with a year slider, and Fern Spike, chosen on the globe's 65 Ma slice). Since then: the §5 data path (nearby PBDB plant occurrences, blended with the prior where evidence is thin) and the §2a Judd et al. (2024) global-mean line on terrain cards (from `climate_by_age.json`) are done. Not yet: the §9 snapshot tiles (reference images for regression checks). Amendments from coding are at the end.
 
 ---
 
@@ -310,4 +310,4 @@ Info cards on ground and vegetation show: biome name, temperature and moisture e
 - **§7 Impact Winter:** which forests died is decided on the **pre-impact** climate; frost covers non-forest ground as annual means fall from 8 °C to 0 °C; the rest is a new **bare ground (aftermath)** biome (18 biomes in all). The sky becomes a grey-brown overcast, sunlight scales with the cooling curve (render §6).
 - **§7 Fern Spike:** ferns carpet the ground, including under former forest; 30% of former forest remains as standing dead snags.
 - **§3 coast term:** distance to the nearest 0.1° sea node, from the DEM window terrain already holds, sampled on a 17 × 17 lattice per tile. The 1° climate fields are sampled on the same lattice.
-- **§5 provisional:** `climate_by_age.json` doesn't exist yet, so ice flags live in `climate.ts` with their citation, and the plant mix is a qualitative prior tagged `PLANTS_FROM_PRIOR`.
+- **§5 provisional (superseded 2026-11-02):** before `climate_by_age.json` and the fossil steps existed, ice flags lived only in `climate.ts` and the plant mix was the prior alone. Now the ice flag is read from `climate_by_age.json` (`climate.ts` keeps the same list as a fallback) and the mix uses nearby plant occurrences, as in §5.

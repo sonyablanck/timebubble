@@ -82,6 +82,8 @@ export class Globe {
   private exaggeration = DEFAULT_EXAGGERATION;
   private reducedMotion = false;
   private pinned: { lat: number; lon: number } | null = null;
+  /** A searched place's marker and name, drawn over the canvas (places/ §3); hidden for clicked pins. */
+  private pinLabel!: HTMLDivElement;
   private pinMesh!: THREE.Mesh;
 
   private dirty = true;
@@ -177,6 +179,10 @@ export class Globe {
       this.labelLayer.appendChild(el);
       this.labels.push({ el, lat });
     }
+    this.pinLabel = document.createElement("div");
+    this.pinLabel.className = "globe-pin";
+    this.pinLabel.style.display = "none";
+    this.labelLayer.appendChild(this.pinLabel);
     this.applyLayers();
   }
 
@@ -372,7 +378,7 @@ export class Globe {
     this.uniforms.showPrec!.value = this.layers.has("precipitation") ? 1 : 0;
     this.uniforms.showProvenance!.value = this.layers.has("provenance") ? 1 : 0;
     this.graticule.visible = this.layers.has("graticule");
-    this.labelLayer.style.display = this.layers.has("graticule") ? "" : "none";
+    for (const { el } of this.labels) el.style.display = this.layers.has("graticule") ? "" : "none";   // the pin's label stays
     if (this.fossilMesh) this.fossilMesh.visible = this.layers.has("fossils");
     this.relief.visible = true;                          // relief is the base; always drawn
     this.dirty = true;
@@ -408,8 +414,11 @@ export class Globe {
     this.reducedMotion = on;
   }
 
-  pin(lat: number, lon: number): void {
+  /** Pin a palaeo-position; a `label` (a searched place's name) also draws a marker and the name. */
+  pin(lat: number, lon: number, label?: string): void {
     this.pinned = { lat, lon };
+    this.pinLabel.textContent = label ?? "";
+    this.pinLabel.dataset.on = label ? "1" : "";
     this.dirty = true;
   }
 
@@ -417,6 +426,7 @@ export class Globe {
 
   unpin(): void {
     this.pinned = null;
+    this.pinLabel.dataset.on = "";
     this.dirty = true;
   }
 
@@ -466,6 +476,13 @@ export class Globe {
     const o = ray.ray.origin, d = ray.ray.direction;
     const hit = raySphere([o.x, o.y, o.z], [d.x, d.y, d.z]);
     return hit ? vec3ToLatLon(hit) : null;
+  }
+
+  /** Pick the point at the centre of the view, as a click there would (keyboard users, ui §9). */
+  pickCentre(): void {
+    const { lat, lon } = this.orbit.view;
+    const info = this.hoverInfo(lat, lon);
+    if (info) { this.pin(lat, lon); this.pickCbs.forEach((cb) => cb(info)); }
   }
 
   /** Screen position (CSS px, relative to the canvas) of a lat/lon on the unit sphere. */
@@ -559,6 +576,12 @@ export class Globe {
         case "[": void this.stepSlice(-1); return;
         case "]": void this.stepSlice(1); return;
         case "r": case "R": this.orbit.set({ lat: DEFAULT_VIEW.lat, dist: DEFAULT_VIEW.dist }); break;
+        case "Enter": case " ":
+          // ui §9: with the globe focused, Enter picks the place at the centre of the view (keyboard picking)
+          if (t !== canvas) return;
+          this.pickCentre();
+          e.preventDefault();
+          return;
         default: return;
       }
       e.preventDefault();
@@ -620,6 +643,13 @@ export class Globe {
   }
 
   private placeLabels(): void {
+    if (this.pinned && this.pinLabel.dataset.on) {
+      const p = this.project(this.pinned.lat, this.pinned.lon);
+      this.pinLabel.style.display = p.visible ? "" : "none";
+      this.pinLabel.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px)`;
+    } else {
+      this.pinLabel.style.display = "none";
+    }
     if (!this.layers.has("graticule")) return;
     // put latitude labels along the meridian 25° west of the view centre
     const lon = this.orbit.view.lon - 25;

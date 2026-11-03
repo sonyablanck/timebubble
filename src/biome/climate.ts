@@ -1,5 +1,6 @@
-// Per-slice climate parameters the biome rules need before pipeline §1d (climate_by_age.json)
-// exists. Each value is cited; move them into climate_by_age.json when that step is built.
+// Per-slice climate parameters for the biome rules, each cited. The ice flag is read from
+// climate_by_age.json (pipeline §1d) when it is loaded; ICE_POSSIBLE_AGES is the same list, kept as the
+// fallback for tests and for data built without that file. The Impact Winter curve lives only here.
 
 /**
  * Slices where brief polar/highland ice is considered possible: the Callovian (166–164 Ma) and the

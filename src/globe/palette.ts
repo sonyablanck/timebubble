@@ -52,6 +52,14 @@ export const PERIOD_COLOURS: Record<string, string> = {
   Palaeogene: "#FD9A52",
 };
 
+/** Black or white text, whichever contrasts more with a background colour (WCAG relative luminance; ui §9). */
+export function textOn(hex: string): string {
+  const lin = (v: number) => { return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const [r, g, b] = hexToRgb(hex);
+  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return (L + 0.05) / 0.05 >= 1.05 / (L + 0.05) ? "#111111" : "#ffffff";
+}
+
 export function hexToRgb(hex: string): [number, number, number] {
   const n = parseInt(hex.replace("#", ""), 16);
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
